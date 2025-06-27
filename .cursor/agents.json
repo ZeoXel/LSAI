@@ -1,0 +1,128 @@
+{
+  "agents": [
+    {
+      "name": "style-enforcer",
+      "description": "样式规范强制执行代理 - 监控和修复样式违规",
+      "systemMessage": "你是一个样式规范强制执行代理。你的职责是:\n1. 监控文件变更，检测样式违规\n2. 自动修复硬编码颜色、任意值语法\n3. 强制使用语义化设计token\n4. 确保样式一致性\n\n约束规则:\n- 禁用任意值语法如 w-[70%], h-[60px], text-[8px]\n- 禁用硬编码颜色如 bg-blue-500, text-red-600\n- 强制使用语义化token: bg-primary, text-info, border-accent\n- 使用预设间距: 0,1,2,3,4,5,6,8,10,12,16,20,24,32\n- 使用预设字体: text-xs,sm,base,lg,xl,2xl,3xl,4xl",
+      "model": "claude-3-5-sonnet-20241022",
+      "triggers": [
+        {
+          "type": "fileChange",
+          "patterns": ["**/*.tsx", "**/*.ts", "**/*.css"],
+          "description": "监控样式文件变更"
+        }
+      ],
+      "tools": [
+        {
+          "name": "check_styles",
+          "command": "cd ai-platform && bun run check-styles",
+          "description": "检查样式一致性"
+        },
+        {
+          "name": "fix_styles", 
+          "command": "cd ai-platform && bun run fix-styles",
+          "description": "自动修复样式问题"
+        }
+      ],
+      "schedule": {
+        "interval": "onSave",
+        "description": "文件保存时自动检查"
+      }
+    },
+    {
+      "name": "typescript-monitor",
+      "description": "TypeScript类型安全监控代理",
+      "systemMessage": "你是TypeScript类型监控代理。监控类型错误，确保类型安全。重点关注:\n1. 类型定义完整性\n2. 接口一致性\n3. 泛型使用正确性\n4. 避免any类型滥用",
+      "model": "claude-3-5-sonnet-20241022",
+      "triggers": [
+        {
+          "type": "fileChange",
+          "patterns": ["**/*.ts", "**/*.tsx"],
+          "description": "监控TypeScript文件"
+        }
+      ],
+      "tools": [
+        {
+          "name": "type_check",
+          "command": "cd ai-platform && bun run lint",
+          "description": "类型检查"
+        }
+      ]
+    },
+    {
+      "name": "dependency-guardian", 
+      "description": "依赖安全与更新监控代理",
+      "systemMessage": "你是依赖管理代理。监控依赖安全性和更新。职责:\n1. 检测安全漏洞\n2. 监控过期依赖\n3. 建议安全更新\n4. 维护依赖清洁",
+      "model": "claude-3-5-sonnet-20241022",
+      "triggers": [
+        {
+          "type": "fileChange", 
+          "patterns": ["package.json", "bun.lock"],
+          "description": "监控依赖文件变更"
+        }
+      ],
+      "tools": [
+        {
+          "name": "security_audit",
+          "command": "cd ai-platform && bun audit",
+          "description": "安全审计"
+        }
+      ],
+      "schedule": {
+        "interval": "daily",
+        "time": "09:00",
+        "description": "每日依赖检查"
+      }
+    },
+    {
+      "name": "build-validator",
+      "description": "构建配置验证代理",
+      "systemMessage": "你是构建配置验证代理。确保构建配置正确性:\n1. 验证构建脚本\n2. 检查配置文件语法\n3. 确保构建成功\n4. 监控性能指标",
+      "model": "claude-3-5-sonnet-20241022", 
+      "triggers": [
+        {
+          "type": "fileChange",
+          "patterns": ["next.config.*", "tailwind.config.*", "tsconfig.json"],
+          "description": "监控构建配置文件"
+        }
+      ],
+      "tools": [
+        {
+          "name": "build_test",
+          "command": "cd ai-platform && bun run build --dry-run",
+          "description": "测试构建"
+        }
+      ]
+    },
+    {
+      "name": "api-monitor",
+      "description": "API端点健康监控代理",
+      "systemMessage": "你是API监控代理。监控API端点健康状态:\n1. 检查API响应时间\n2. 监控错误率\n3. 验证数据格式\n4. 确保服务可用性",
+      "model": "claude-3-5-sonnet-20241022",
+      "triggers": [
+        {
+          "type": "fileChange",
+          "patterns": ["**/api/**/*.ts", "**/route.ts"],
+          "description": "监控API文件变更"
+        }
+      ],
+      "tools": [
+        {
+          "name": "api_health_check",
+          "command": "cd ai-platform && curl -f http://localhost:3000/api/health || echo 'API健康检查失败'",
+          "description": "API健康检查"
+        }
+      ],
+      "schedule": {
+        "interval": "hourly",
+        "description": "每小时API健康检查"
+      }
+    }
+  ],
+  "globalSettings": {
+    "logLevel": "info",
+    "maxConcurrentAgents": 3,
+    "retryAttempts": 2,
+    "timeout": 30000
+  }
+} 

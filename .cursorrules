@@ -1,0 +1,183 @@
+# 🎨 严格样式统一规则 - 强制执行
+
+## 📋 核心原则
+1. **100%使用设计系统** - 禁止任何硬编码样式
+2. **语义化优先** - 使用语义化颜色而非具体颜色值 
+3. **组件变体约束** - 只能使用预定义的变体组合
+4. **零容忍任意值** - 严禁 `[arbitrary-value]` 语法
+
+## 🚫 严禁行为清单
+
+### 颜色相关
+- ❌ 硬编码颜色：`text-blue-500`, `bg-red-400`, `border-gray-300`
+- ❌ 透明度任意值：`bg-blue-500/30`, `text-red-600/70`
+- ❌ 自定义颜色：`text-[#ff0000]`, `bg-[hsl(220,50%,60%)]`
+- ✅ 语义化颜色：`text-primary`, `bg-destructive`, `border-muted`
+
+### 间距相关
+- ❌ 任意间距：`p-[12px]`, `m-[0.75rem]`, `gap-[20px]`
+- ❌ 非预设尺寸：`p-7`, `m-9`, `gap-11`
+- ✅ 预设间距：`p-4`, `m-6`, `gap-2`
+
+### 字体相关
+- ❌ 任意字体大小：`text-[14px]`, `text-[1.125rem]`
+- ❌ 非预设尺寸：`text-xs`, `text-5xl`
+- ✅ 预设字体：`text-sm`, `text-lg`, `text-2xl`
+
+## ✅ 强制执行规范
+
+### 1. 颜色使用规范
+```typescript
+// 🎯 必须使用设计系统中的语义化颜色
+import { SEMANTIC_COLORS, getSemanticColor } from '@/lib/design-system'
+
+// ✅ 正确方式
+className={getSemanticColor('chat', 'bg')}
+className="bg-primary text-primary-foreground"
+className="text-success border-success/30"
+
+// ❌ 禁止方式
+className="bg-blue-500 text-white"
+className="text-red-600 border-gray-300"
+```
+
+### 2. 组件变体规范
+```typescript
+// ✅ 使用预定义变体
+<Button variant="default" size="md">
+<Card className="bg-card p-6">
+<Input variant="outline">
+
+// ❌ 自定义样式
+<Button className="bg-blue-500 hover:bg-blue-600">
+<div className="p-[12px] rounded-[8px]">
+```
+
+### 3. 间距系统规范
+```typescript
+// ✅ 使用预设间距 (0,1,2,3,4,5,6,8,10,12,16,20,24,32)
+className="p-4 m-6 gap-2"
+className="space-y-4 px-6"
+
+// ❌ 任意间距
+className="p-[12px] m-[18px]"
+className="gap-7 space-y-9"
+```
+
+## 🎨 组件创建强制模板
+
+### UI组件创建模板
+```typescript
+import { cn } from '@/lib/utils'
+import { getSemanticColor, COMPONENT_SIZES } from '@/lib/design-system'
+import { cva, type VariantProps } from 'class-variance-authority'
+
+const componentVariants = cva(
+  "基础样式使用语义化token", // 基础类
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground",
+        secondary: "bg-secondary text-secondary-foreground", 
+        // 只能使用预定义语义化颜色
+      },
+      size: {
+        sm: "h-8 px-3 text-sm",
+        md: "h-10 px-4 text-base", 
+        lg: "h-12 px-6 text-lg",
+        // 只能使用预设尺寸
+      }
+    }
+  }
+)
+```
+
+### 页面/功能组件模板
+```typescript
+export function NewFeature() {
+  return (
+    <div className="bg-background p-6 space-y-4">
+      <Card className="bg-card p-6">
+        <h2 className="text-lg font-semibold text-foreground mb-4">
+          标题
+        </h2>
+        <div className="space-y-2">
+          <Button variant="default" size="md">
+            主要操作
+          </Button>
+          <Button variant="outline" size="md">
+            次要操作
+          </Button>
+        </div>
+      </Card>
+    </div>
+  )
+}
+```
+
+## 🔒 AI工具调用约束
+
+### 生成界面时必须遵循
+1. **导入设计系统**：`import { getSemanticColor } from '@/lib/design-system'`
+2. **使用语义化颜色**：优先使用 `chat`, `workflow`, `image`, `video` 等功能色
+3. **组件变体限制**：只能使用 `Button`, `Card`, `Input` 等的预定义变体
+4. **间距约束**：只能使用 0,1,2,3,4,5,6,8,10,12,16,20,24,32 等预设值
+
+### 响应式设计约束
+```typescript
+// ✅ 使用预设断点
+className="md:p-6 lg:p-8"
+className="sm:text-sm md:text-base lg:text-lg"
+
+// ❌ 任意断点
+className="min-w-[320px] max-w-[768px]"
+```
+
+## 🎯 功能模块色彩约束
+
+根据 [design-system.ts](mdc:src/lib/design-system.ts) 中的语义化颜色：
+
+- **聊天功能**：使用 `chat` 色系 (蓝色系)
+- **工作流功能**：使用 `workflow` 色系 (绿色系)  
+- **图像功能**：使用 `image` 色系 (紫色系)
+- **视频功能**：使用 `video` 色系 (橙红系)
+
+```typescript
+// ✅ 功能模块色彩使用
+<div className={getSemanticColor('chat', 'bg')}>
+  聊天相关界面
+</div>
+
+<Button className={getSemanticColor('image', 'text')}>
+  图像生成
+</Button>
+```
+
+## 🔍 代码审查检查点
+
+每次生成/修改代码后，必须检查：
+
+1. ✅ 是否导入了设计系统？
+2. ✅ 是否使用了语义化颜色？
+3. ✅ 是否使用了预设间距？
+4. ✅ 是否使用了预设字体大小？
+5. ✅ 是否使用了组件变体？
+6. ✅ 是否符合功能模块色彩约束？
+
+## 📚 参考文档
+
+- 设计系统：[design-system.ts](mdc:src/lib/design-system.ts)
+- Tailwind配置：[tailwind.config.js](mdc:tailwind.config.js)  
+- 全局样式：[globals.css](mdc:src/app/globals.css)
+- 按钮组件：[button.tsx](mdc:src/components/ui/button.tsx)
+
+## 🚨 违规处理
+
+如发现AI生成的代码违反上述规范：
+1. **立即停止** - 不接受任何硬编码样式
+2. **强制重构** - 使用设计系统重写
+3. **引用规范** - 明确指出违反的具体规则
+
+---
+
+**⚡ 总结：100%使用设计系统，0%容忍任意样式！** 
