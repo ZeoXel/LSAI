@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Send, Bot, User, Settings, Zap, ImageIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-// import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -64,6 +63,9 @@ export function ChatPage() {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // 滚动控制
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  
   // Store hooks
   const { loadRecords } = useHistoryStore();
   const { 
@@ -71,8 +73,38 @@ export function ChatPage() {
     messages, 
     setMessages, 
     addMessage, 
-    clearConversation 
+    clearConversation,
+    loadConversation
   } = useConversationStore();
+
+  // 自动滚动到底部的函数
+  const scrollToBottom = () => {
+    if (scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
+    }
+  };
+
+  // 页面加载时滚动到底部
+  useEffect(() => {
+    scrollToBottom();
+  }, []);
+
+  // 消息更新时滚动到底部
+  useEffect(() => {
+    if (messages.length > 0) {
+      scrollToBottom();
+    }
+  }, [messages]);
+
+  // 输入状态变化时滚动到底部
+  useEffect(() => {
+    if (isTyping) {
+      scrollToBottom();
+    }
+  }, [isTyping]);
   
   // 加载当前对话
   useEffect(() => {
@@ -91,6 +123,33 @@ export function ChatPage() {
     loadCurrentConversation();
   }, [setMessages]);
 
+  // 监听历史记录点击跳转事件
+  useEffect(() => {
+    const handleLoadHistoryConversation = async (event: CustomEvent) => {
+      const { conversationId } = event.detail;
+      if (conversationId) {
+        await loadConversation(conversationId);
+        setSelectedImages([]);
+        
+        // 从本地存储获取对话信息来设置模型
+        try {
+          const conversation = await localStorageService.getRecord(conversationId);
+          if (conversation) {
+            setSelectedModel(conversation.modelName);
+          }
+        } catch (error) {
+          console.error('获取对话模型失败:', error);
+        }
+      }
+    };
+
+    window.addEventListener('loadHistoryConversation', handleLoadHistoryConversation as any);
+    
+    return () => {
+      window.removeEventListener('loadHistoryConversation', handleLoadHistoryConversation as any);
+    };
+  }, [loadConversation]);
+
   // 监听新建对话事件
   useEffect(() => {
     const handleNewChatSession = () => {
@@ -108,6 +167,7 @@ export function ChatPage() {
   const handleNewConversation = async () => {
     try {
       clearConversation();
+      setSelectedImages([]);
       loadRecords(); // 刷新历史记录列表
       console.log('已开始新对话，将在有内容时保存到历史记录');
     } catch (error) {
@@ -304,18 +364,18 @@ export function ChatPage() {
     // 验证文件类型和数量
     const validImages = files.filter(file => {
       if (!isValidImageFile(file)) {
-        alert(`${file.name} 不是支持的图片格式`);
+        toast.error(`${file.name} 不是支持的图片格式`);
         return false;
       }
       if (file.size > 10 * 1024 * 1024) { // 10MB限制
-        alert(`${file.name} 文件过大，请选择小于10MB的图片`);
+        toast.error(`${file.name} 文件过大，请选择小于10MB的图片`);
         return false;
       }
       return true;
     });
 
     if (selectedImages.length + validImages.length > 4) {
-      alert('最多只能选择4张图片');
+      toast.error('最多只能选择4张图片');
       return;
     }
 
@@ -639,7 +699,7 @@ export function ChatPage() {
     <div className="h-full flex flex-col bg-background">
       {/* 聊天消息区域 */}
       <div className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
+        <ScrollArea ref={scrollAreaRef} className="h-full">
           <div className="p-4 space-y-4">
             {messages.map((message, index) => (
               <motion.div

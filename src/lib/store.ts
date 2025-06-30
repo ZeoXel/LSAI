@@ -8,6 +8,9 @@ interface AppState {
   // 当前选中的工具
   selectedTool: string;
   
+  // 历史记录类型
+  historyType: string;
+  
   // 文件管理
   currentFiles: string[];
   
@@ -15,6 +18,7 @@ interface AppState {
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
   setSelectedTool: (tool: string) => void;
+  setHistoryType: (type: string) => void;
   addFile: (file: string) => void;
   removeFile: (file: string) => void;
 }
@@ -24,6 +28,7 @@ export const useAppStore = create<AppState>((set) => ({
   isLeftSidebarOpen: true,
   isRightSidebarOpen: true,
   selectedTool: 'chat',
+  historyType: 'chat',
   currentFiles: [],
   
   // 动作函数
@@ -34,7 +39,10 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({ isRightSidebarOpen: !state.isRightSidebarOpen })),
   
   setSelectedTool: (tool: string) => 
-    set({ selectedTool: tool }),
+    set({ selectedTool: tool, historyType: tool }),
+  
+  setHistoryType: (type: string) => 
+    set({ historyType: type }),
   
   addFile: (file: string) => 
     set((state) => ({ 

@@ -15,11 +15,13 @@ import {
   Plus,
   Palette,
   ImageIcon,
-  X
+  X,
+  Wand2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHistoryStore } from "@/lib/history-store";
 import { localStorageService } from "@/lib/local-storage";
+import { PromptOptimizer } from "@/components/ai/PromptOptimizer";
 
 // 图像生成模型配置
 const IMAGE_MODELS = [
@@ -115,6 +117,7 @@ export function ImageGenerator() {
   const [autoUseLastImage, setAutoUseLastImage] = useState(false); // 自动使用上一张图片
   const [showEditTip, setShowEditTip] = useState(true); // 控制编辑提示的显示
   const [isDragOver, setIsDragOver] = useState(false); // 拖拽状态
+  const [showPromptOptimizer, setShowPromptOptimizer] = useState(false); // 显示提示词优化器
 
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -170,6 +173,7 @@ export function ImageGenerator() {
       setSelectedImages([]);
       setAutoUseLastImage(false);
       setShowEditTip(true);
+      setShowPromptOptimizer(false);
       
       // 清理文件输入
       if (fileInputRef.current) {
@@ -322,6 +326,24 @@ export function ImageGenerator() {
     }
   };
 
+  // 处理提示词优化
+  const handleShowPromptOptimizer = () => {
+    if (!prompt.trim()) {
+      toast.error("请先输入提示词");
+      return;
+    }
+    setShowPromptOptimizer(true);
+  };
+
+  const handleApplyOptimizedPrompt = (optimizedPrompt: string) => {
+    setPrompt(optimizedPrompt);
+    setShowPromptOptimizer(false);
+  };
+
+  const handleClosePromptOptimizer = () => {
+    setShowPromptOptimizer(false);
+  };
+
   // 预览图片 - 使用全局事件触发历史记录的预览
   const handlePreviewImage = async (imageUrl: string, prompt: string) => {
     try {
@@ -334,6 +356,7 @@ export function ImageGenerator() {
         id: `temp_${Date.now()}`,
         fileName: `generated_${Date.now()}.png`,
         blob: blob,
+        mimeType: 'image/png', // 添加mimeType属性
         record: {
           id: `temp_record_${Date.now()}`,
           title: prompt,
@@ -1062,6 +1085,18 @@ export function ImageGenerator() {
           
           {/* 右下角按钮组 */}
           <div className="absolute right-2 bottom-2 flex gap-1">
+            {/* AI提示词优化按钮 */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleShowPromptOptimizer}
+              disabled={isGenerating || !prompt.trim()}
+              className="h-8 w-8 hover:bg-muted"
+              title="AI提示词优化 - 自动按照专业格式优化提示词"
+            >
+              <Wand2 className="h-4 w-4" />
+            </Button>
+            
             {/* 图片上传按钮 */}
             {supportsMultipleImages() ? (
               <Button
@@ -1111,6 +1146,16 @@ export function ImageGenerator() {
         </div>
       </div>
 
+      {/* AI提示词优化器 */}
+      {showPromptOptimizer && (
+        <PromptOptimizer
+          originalPrompt={prompt}
+          type="image"
+          onApplyOptimized={handleApplyOptimizedPrompt}
+          onClose={handleClosePromptOptimizer}
+          autoRun={true}
+        />
+      )}
 
     </div>
   );

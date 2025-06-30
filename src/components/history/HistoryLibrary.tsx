@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, MessageSquare, Image, Tag, Trash2, Calendar, Download, Eye, X, Edit } from 'lucide-react';
+import { Search, MessageSquare, Image, Tag, Trash2, Calendar, Download, Eye, X, Edit, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -177,7 +177,7 @@ function HistoryCard({ record, onLoadConversation }: {
   );
 }
 
-// 图片预览模态框组件
+// 媒体预览模态框组件（支持图片和视频）
 function ImagePreviewModal({ 
   file, 
   isOpen, 
@@ -260,46 +260,97 @@ function ImagePreviewModal({
               <Download className="h-4 w-4" />
             </Button>
 
-            {/* 图片 */}
+            {/* 媒体内容 */}
             <div className="relative">
+              {file.mimeType?.startsWith('image/') ? (
               <img
                 src={URL.createObjectURL(file.blob)}
                 alt={file.record.title}
                 className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
               />
-              
-              {/* 图片信息 - 悬浮在图片底部 */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-4 rounded-b-lg">
-                <h3 className="text-white text-lg font-medium mb-2 truncate">
-                  {file.record.title}
-                </h3>
-                
-                {/* 信息行 - 竖版图片时使用垂直布局 */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-white/80 text-sm">
-                    <span className="bg-white/20 px-2 py-1 rounded text-xs">
-                      {file.record.modelName}
-                    </span>
-                    <span>
-                      {new Date(file.record.createdAt).toLocaleDateString()}
-                    </span>
+              ) : file.mimeType?.startsWith('video/') ? (
+                <video
+                  src={URL.createObjectURL(file.blob)}
+                  controls
+                  className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl border"
+                  preload="metadata"
+                  onLoadedMetadata={(e) => {
+                    // 视频元数据加载完成后，设置到第一帧并暂停
+                    const video = e.currentTarget;
+                    video.currentTime = 0;
+                    video.pause();
+                  }}
+                  style={{
+                    // 确保视频背景不是黑色
+                    backgroundColor: 'transparent'
+                  }}
+                >
+                  您的浏览器不支持视频播放
+                </video>
+              ) : (
+                <div className="w-full h-[60vh] flex items-center justify-center bg-muted rounded-lg shadow-2xl">
+                  <div className="text-center text-muted-foreground">
+                    <div className="w-16 h-16 bg-muted-foreground/10 rounded-lg mx-auto mb-4 flex items-center justify-center">
+                      <span className="text-2xl">📄</span>
+                    </div>
+                    <p>不支持预览此文件类型</p>
+                    <p className="text-sm mt-1">{file.fileName}</p>
                   </div>
+                </div>
+              )}
+              
+              {/* 媒体信息 - 悬浮在底部，为视频控制条留出空间 */}
+              <div className={cn(
+                "absolute left-0 right-0 p-4",
+                file.mimeType?.startsWith('video/') 
+                  ? "bottom-16 rounded-lg" // 视频：给控制条留出空间（64px） 
+                  : "bottom-0 rounded-b-lg" // 图片：贴底显示
+              )}>
+                {/* 信息容器 - 带自适应背景 */}
+                <div className="bg-black/60 backdrop-blur-sm rounded-lg p-3 space-y-2">
+                  <h3 className="text-white text-lg font-medium truncate">
+                    {file.record.title}
+                  </h3>
                   
-                  <div className="flex items-center gap-2 text-white/70 text-xs">
-                    <span className="truncate">{file.fileName}</span>
-                    {file.width && file.height && (
-                      <>
-                        <span>•</span>
-                        <span>{file.width} × {file.height}</span>
-                      </>
+                  {/* 信息行 */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-white/90 text-sm">
+                      <span className="bg-white/20 backdrop-blur-sm px-2 py-1 rounded text-xs">
+                        {file.record.modelName}
+                      </span>
+                      <span>
+                        {new Date(file.record.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 text-white/80 text-xs">
+                      <span className="truncate">{file.fileName}</span>
+                      {file.mimeType?.startsWith('image/') && file.width && file.height && (
+                        <>
+                          <span>•</span>
+                          <span>{file.width} × {file.height}</span>
+                        </>
+                      )}
+                      {file.mimeType?.startsWith('video/') && file.record.metadata?.videoDuration && (
+                        <>
+                          <span>•</span>
+                          <span>{file.record.metadata.videoDuration}s</span>
+                        </>
+                      )}
+                      {file.mimeType?.startsWith('video/') && file.record.metadata?.videoResolution && (
+                        <>
+                          <span>•</span>
+                          <span>{file.record.metadata.videoResolution}</span>
+                        </>
+                      )}
+                    </div>
+                    
+                    {file.record.metadata?.originalPrompt && (
+                      <p className="text-white/70 text-xs mt-2 line-clamp-2">
+                        "{file.record.metadata.originalPrompt}"
+                      </p>
                     )}
                   </div>
-                  
-                  {file.record.metadata?.originalPrompt && (
-                    <p className="text-white/60 text-xs mt-2 line-clamp-2">
-                      "{file.record.metadata.originalPrompt}"
-                    </p>
-                  )}
                 </div>
               </div>
             </div>
@@ -552,7 +603,7 @@ function MediaGrid() {
           <Image className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">暂无媒体内容</p>
           <p className="text-xs text-muted-foreground mt-1">
-            生成图片后会自动保存在这里
+            生成图片或视频后会自动保存在这里
           </p>
         </div>
       </div>
@@ -569,7 +620,8 @@ function MediaGrid() {
             animate={{ opacity: 1, scale: 1 }}
             className="relative group aspect-square bg-muted rounded-lg overflow-hidden"
           >
-            {/* 图片 */}
+            {/* 媒体内容 - 智能显示图片和视频缩略图 */}
+            {file.mimeType?.startsWith('image/') ? (
             <img
               src={URL.createObjectURL(file.blob)}
               alt={file.record.title}
@@ -611,6 +663,65 @@ function MediaGrid() {
               }}
               title="点击预览，拖拽到输入框使用此图片"
             />
+            ) : file.mimeType?.startsWith('video/') ? (
+              // 对于视频，优先显示缩略图，如果没有缩略图则显示视频第一帧
+              <div className="relative w-full h-full bg-black/10">
+                {file.thumbnailBlob ? (
+                  // 显示缩略图
+                  <img
+                    src={URL.createObjectURL(file.thumbnailBlob)}
+                    alt={file.record.title}
+                    className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-200"
+                    onClick={(e) => {
+                      // 点击预览完整视频
+                      if (!e.defaultPrevented) {
+                        handlePreview(file);
+                      }
+                    }}
+                    title="点击预览完整视频"
+                  />
+                ) : (
+                  // 降级方案：显示视频第一帧
+                  <video
+                    src={URL.createObjectURL(file.blob)}
+                    className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-200"
+                    preload="metadata"
+                    onClick={(e) => {
+                      // 点击预览视频
+                      if (!e.defaultPrevented) {
+                        handlePreview(file);
+                      }
+                    }}
+                    title="点击预览视频"
+                  />
+                )}
+                {/* 视频播放图标覆盖层 */}
+                <div 
+                  className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors cursor-pointer"
+                  onClick={(e) => {
+                    // 点击播放图标也触发预览
+                    if (!e.defaultPrevented) {
+                      handlePreview(file);
+                    }
+                  }}
+                  title="点击预览完整视频"
+                >
+                  <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
+                    <Video className="w-6 h-6 text-black ml-1" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // 其他文件类型的占位符
+              <div className="w-full h-full bg-muted flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-8 h-8 bg-muted-foreground/20 rounded mx-auto mb-2"></div>
+                  <p className="text-xs text-muted-foreground">
+                    {file.fileName.split('.').pop()?.toUpperCase()}
+                  </p>
+                </div>
+              </div>
+            )}
             
             {/* 底部信息 */}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pr-10">
@@ -673,8 +784,34 @@ export function HistoryLibrary() {
     resetFilters,
   } = useHistoryStore();
   
+  // 获取全局状态
+  const { historyType } = useAppStore();
+  
   // 本地状态管理，避免频繁的loading闪烁
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [userManuallyChanged, setUserManuallyChanged] = useState(false);
+
+  // 智能切换逻辑：工具切换时自动切换，但不覆盖用户手动选择
+  useEffect(() => {
+    // 只有在用户没有手动切换的情况下才自动切换
+    if (!userManuallyChanged) {
+      const typeMapping: { [key: string]: 'text' | 'media' } = {
+        'chat': 'text',
+        'image': 'media',
+        'video': 'media',
+      };
+      
+      const mappedType = typeMapping[historyType] || 'text';
+      if (selectedType !== mappedType) {
+        setSelectedType(mappedType);
+      }
+    }
+  }, [historyType, selectedType, setSelectedType, userManuallyChanged]);
+
+  // 重置用户手动切换状态（当工具切换时）
+  useEffect(() => {
+    setUserManuallyChanged(false);
+  }, [historyType]);
 
   // 初始化加载，默认显示文本对话
   useEffect(() => {
@@ -701,6 +838,13 @@ export function HistoryLibrary() {
   const handleLoadConversation = async (record: HistoryRecord) => {
     try {
       await loadConversation(record.id);
+      
+      // 触发自定义事件通知ChatPage
+      const event = new CustomEvent('loadHistoryConversation', {
+        detail: { conversationId: record.id }
+      });
+      window.dispatchEvent(event);
+      
       console.log('对话已切换:', record.title);
     } catch (error) {
       console.error('加载对话失败:', error);
@@ -729,7 +873,10 @@ export function HistoryLibrary() {
           <Button
             variant={selectedType === 'text' ? "default" : "ghost"}
             size="sm"
-            onClick={() => setSelectedType('text')}
+            onClick={() => {
+              setSelectedType('text');
+              setUserManuallyChanged(true); // 标记为用户手动切换
+            }}
             className={cn(
               "flex-1 flex items-center justify-center gap-2 transition-all",
               selectedType === 'text' 
@@ -743,7 +890,10 @@ export function HistoryLibrary() {
           <Button
             variant={selectedType === 'media' ? "default" : "ghost"}
             size="sm"
-            onClick={() => setSelectedType('media')}
+            onClick={() => {
+              setSelectedType('media');
+              setUserManuallyChanged(true); // 标记为用户手动切换
+            }}
             className={cn(
               "flex-1 flex items-center justify-center gap-2 transition-all",
               selectedType === 'media' 

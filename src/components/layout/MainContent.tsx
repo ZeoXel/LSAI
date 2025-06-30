@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { PanelRightOpen, Plus } from "lucide-react";
 import { ChatPage } from "@/components/chat/ChatPage";
 import { ImageGenerator } from "@/components/image/ImageGenerator";
+
+import { VideoGenerator } from "@/components/video/VideoGenerator";
 // import { useConversationStore } from "@/lib/conversation-store";
 // import { Card } from "@/components/ui/card";
 
@@ -41,6 +43,9 @@ export function MainContent({ children }: MainContentProps) {
     if (selectedTool === 'image') {
       // 通过事件通知ImageGenerator组件
       window.dispatchEvent(new CustomEvent('newImageSession'));
+    } else if (selectedTool === 'video') {
+      // 通过事件通知VideoGenerator组件
+      window.dispatchEvent(new CustomEvent('newVideoSession'));
     }
   };
 
@@ -51,21 +56,14 @@ export function MainContent({ children }: MainContentProps) {
       case 'image':
         return <ImageGenerator />;
       case 'video':
-        return (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <h2 className="text-xl font-semibold mb-2">AI视频制作</h2>
-              <p className="text-muted-foreground">视频制作功能即将推出...</p>
-            </div>
-          </div>
-        );
+        return <VideoGenerator />;
       default:
         return children;
     }
   };
 
-  // 对于聊天和图像生成页面，使用无标题栏的布局
-  if (selectedTool === 'chat' || selectedTool === 'image') {
+  // 对于聊天、图像生成和视频生成页面，使用无标题栏的布局
+  if (selectedTool === 'chat' || selectedTool === 'image' || selectedTool === 'video') {
     return (
       <div className="h-full flex flex-col">
         {/* 页面顶部栏 */}
@@ -88,6 +86,18 @@ export function MainContent({ children }: MainContentProps) {
                 </Button>
               )}
               {selectedTool === 'image' && (
+                <Button
+                  onClick={handleNewSession}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  新建对话
+                </Button>
+              )}
+
+              {selectedTool === 'video' && (
                 <Button
                   onClick={handleNewSession}
                   variant="outline"

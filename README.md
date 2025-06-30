@@ -1,53 +1,142 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LSJX - AI多模态内容生成平台
 
-## Getting Started
+基于Next.js 15和可灵AI的多模态内容生成平台，支持智能对话、图像生成、视频创作等功能。
 
-First, run the development server:
+## ✨ 核心功能
 
+- 🤖 **智能对话** - 基于大语言模型的智能聊天
+- 🎨 **图像生成** - 文生图、图生图、多图合并
+- 🎬 **视频创作** - 文生视频、图生视频、多图参考生视频
+- 📚 **历史记录** - 完整的创作历史管理
+- 🎯 **统一设计** - 基于设计系统的一致性UI
+
+## 🚀 快速开始
+
+### 环境要求
+- Node.js 18+
+- Bun 或 npm/yarn/pnpm
+
+### 安装依赖
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+# 或 npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 环境配置
+创建 `.env.local` 文件：
+```env
+# 可灵AI配置
+KLING_ACCESS_KEY=your_access_key
+KLING_SECRET_KEY=your_secret_key
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+# 其他AI服务配置（可选）
+OPENAI_API_KEY=your_openai_key
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## 自动样式检查与修复
-
-本项目内置严格的样式统一规则，防止硬编码颜色、任意间距、任意字体等不规范写法。  
-你可以使用如下命令进行自动检查和修复：
-
+### 启动开发服务器
 ```bash
-# 检查所有样式违规
+bun dev
+# 或 npm run dev
+```
+
+访问 [http://localhost:3000](http://localhost:3000) 查看应用。
+
+## 🛠️ 技术栈
+
+- **框架**: Next.js 15 (App Router)
+- **语言**: TypeScript
+- **样式**: Tailwind CSS + 设计系统
+- **UI组件**: shadcn/ui
+- **状态管理**: React Hooks + Local Storage
+- **AI服务**: 可灵AI、OpenAI等
+
+## 📁 项目结构
+
+```
+src/
+├── app/                 # Next.js App Router
+│   ├── api/            # API路由
+│   └── globals.css     # 全局样式
+├── components/         # React组件
+│   ├── ai/            # AI工具基座
+│   ├── chat/          # 聊天功能
+│   ├── image/         # 图像生成
+│   ├── video/         # 视频生成
+│   ├── layout/        # 布局组件
+│   └── ui/            # 基础UI组件
+├── lib/               # 工具函数和配置
+│   ├── design-system.ts  # 设计系统
+│   ├── kling-api.ts      # 可灵API
+│   └── utils.ts          # 工具函数
+└── templates/         # 开发模板
+```
+
+## 🎨 设计系统
+
+项目采用严格的设计系统，确保UI一致性：
+
+- **语义化颜色**: chat(蓝)、image(紫)、video(橙)、workflow(绿)
+- **统一间距**: 基于4px网格的标准间距
+- **组件变体**: 预定义的按钮、卡片等组件样式
+
+### 样式检查
+```bash
+# 检查样式规范
 bun run style-enforce
 
-# 自动修复所有可修复的样式违规
+# 自动修复样式违规
 bun run style-enforce-fix
 ```
 
-- 推荐在每次提交前运行 `bun run style-enforce`，确保所有样式符合设计系统规范。
-- 发现违规时可用 `bun run style-enforce-fix` 一键修复大部分常见问题。
-- 规则详见 `.cursorrules` 文件。
+## 🔧 开发指南
 
-## Learn More
+### 添加新功能
+1. 基于 `AIToolBase` 创建新工具组件
+2. 参考 `src/templates/` 下的开发模板
+3. 遵循设计系统规范
+4. 添加相应的API路由
 
-To learn more about Next.js, take a look at the following resources:
+### 代码规范
+- 使用TypeScript严格模式
+- 遵循ESLint配置
+- 提交前自动运行样式检查
+- 使用语义化的commit消息
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📚 API文档
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 可灵AI集成
+项目已集成可灵AI的完整API：
+- 文生视频/图生视频
+- 多图参考生视频
+- 智能参数验证
+- 自动任务轮询
 
-## Deploy on Vercel
+详细API文档请查看 `docs/video-api-archive/`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🚀 部署
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Vercel部署（推荐）
+1. Fork本项目到GitHub
+2. 在Vercel中导入项目
+3. 配置环境变量
+4. 自动部署完成
+
+### 其他平台
+支持任何支持Next.js的部署平台，如Netlify、Railway等。
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request！
+
+1. Fork项目
+2. 创建功能分支
+3. 提交变更
+4. 发起Pull Request
+
+## 📄 许可证
+
+MIT License - 详见 [LICENSE](LICENSE) 文件。
+
+---
+
+⭐ 如果这个项目对你有帮助，请给一个Star！

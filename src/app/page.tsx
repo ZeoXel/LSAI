@@ -48,7 +48,7 @@ export default function HomePage() {
       </Card>
 
       {/* 功能特性 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {features.map((feature) => {
           const Icon = feature.icon;
           return (
