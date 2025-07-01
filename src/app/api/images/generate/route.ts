@@ -69,18 +69,28 @@ export async function POST(request: NextRequest) {
     let data: ImageGenerationResponse;
     try {
       data = await response.json();
+      console.log('🎨 DMXAPI原始响应:', JSON.stringify(data, null, 2));
     } catch (parseError) {
       throw new Error('服务器响应格式错误');
     }
 
+    // 检查返回的数据结构
+    if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
+      console.error('❌ DMXAPI返回数据异常:', data);
+      throw new Error('图像生成服务未返回有效数据');
+    }
+
     // 返回成功响应
-    return NextResponse.json({
+    const result = {
       success: true,
       images: data.data,
       model: model,
       size: size,
       prompt: prompt,
-    });
+    };
+    
+    console.log('✅ API最终返回:', JSON.stringify(result, null, 2));
+    return NextResponse.json(result);
 
   } catch (error: unknown) {
     console.error('Image generation API error:', error);

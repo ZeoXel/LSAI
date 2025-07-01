@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { localStorageService } from "@/lib/local-storage";
+import { useStorage } from "@/lib/store";
 import { toast } from 'sonner';
 import { PromptOptimizer } from "@/components/ai/PromptOptimizer";
 
@@ -116,6 +116,7 @@ const saveRecordsToStorage = (records: GenerationRecord[]) => {
 // 删除generateVideoThumbnail函数，不再需要生成缩略图
 
 export function VideoGenerator() {
+  const storageService = useStorage();
   const [selectedModel, setSelectedModel] = useState("kling-v2-1-master");
   const [selectedMode, setSelectedMode] = useState("std"); // 新增：模式选择
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("16:9"); // 修改：比例选择
@@ -700,7 +701,7 @@ export function VideoGenerator() {
           });
           
           // 保存到数据库（只保存一个记录）
-          const mediaRecord = await localStorageService.createRecord({
+          const mediaRecord = await storageService.createRecord({
             type: 'media',
             title: newRecord.prompt.slice(0, 50) + (newRecord.prompt.length > 50 ? '...' : ''),
             messages: [],
@@ -710,7 +711,7 @@ export function VideoGenerator() {
           });
           
           // 只上传视频文件，不上传缩略图（避免重复记录）
-          await localStorageService.uploadFile(videoFile, mediaRecord.id);
+          await storageService.uploadFile(videoFile, mediaRecord.id);
           
           console.log("✅ 视频已保存到历史记录数据库");
           window.dispatchEvent(new CustomEvent('mediaFilesUpdated'));

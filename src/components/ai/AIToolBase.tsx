@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useHistoryStore } from "@/lib/history-store";
 import { useConversationStore } from "@/lib/conversation-store";
-import { localStorageService } from "@/lib/local-storage";
+import { useStorage } from "@/lib/store";
 import { getSemanticColor } from "@/lib/design-system";
 import { convertFileToBase64, isValidImageFile, compressImage } from "@/lib/utils";
 import { toast } from 'sonner';
@@ -74,6 +74,7 @@ export function AIToolBase({
   supportsImages = false,
   saveToConversation = true
 }: AIToolBaseProps) {
+  const storageService = useStorage();
   // 基础状态 - 与ChatPage完全一致
   const [inputValue, setInputValue] = useState("");
   const [selectedModel, setSelectedModel] = useState(defaultModel);
@@ -238,11 +239,11 @@ export function AIToolBase({
       // 保存到对话历史 - 只有启用时才保存
       if (saveToConversation) {
         try {
-          let activeConversation = currentConversation || await localStorageService.getActiveConversation();
+          let activeConversation = currentConversation || await storageService.getActiveConversation();
           
           if (!activeConversation) {
             const title = `${config.name}: ${currentInput.length > 20 ? currentInput.substring(0, 20) + '...' : currentInput}`;
-            activeConversation = await localStorageService.createConversation(title, selectedModel);
+            activeConversation = await storageService.createConversation(title, selectedModel);
           }
           
           const userMessage = {
@@ -259,8 +260,8 @@ export function AIToolBase({
             timestamp: Date.now(),
           };
           
-          await localStorageService.addMessageToConversation(activeConversation.id, userMessage);
-          await localStorageService.addMessageToConversation(activeConversation.id, assistantMessage);
+          await storageService.addMessageToConversation(activeConversation.id, userMessage);
+          await storageService.addMessageToConversation(activeConversation.id, assistantMessage);
           
           addMessage(userMessage);
           addMessage(assistantMessage);

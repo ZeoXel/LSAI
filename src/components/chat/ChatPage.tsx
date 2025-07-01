@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { useHistoryStore } from "@/lib/history-store";
 import { useConversationStore } from "@/lib/conversation-store";
 import { ChatMessage, TextContent, ImageContent } from "@/lib/types";
-import { localStorageService } from "@/lib/local-storage";
+import { useStorage } from "@/lib/store";
 import { convertFileToBase64, isValidImageFile, compressImage } from "@/lib/utils";
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { toast } from 'sonner';
@@ -55,6 +55,7 @@ const AI_MODELS: AIModel[] = [
 ];
 
 export function ChatPage() {
+  const storageService = useStorage();
   const [inputValue, setInputValue] = useState("");
   const [selectedModel, setSelectedModel] = useState("gpt-4o");
   const [isTyping, setIsTyping] = useState(false);
@@ -110,7 +111,7 @@ export function ChatPage() {
   useEffect(() => {
     const loadCurrentConversation = async () => {
       try {
-        const conversation = await localStorageService.getActiveConversation();
+        const conversation = await storageService.getActiveConversation();
         if (conversation) {
           setMessages(conversation.messages);
           setSelectedModel(conversation.modelName);
@@ -133,7 +134,7 @@ export function ChatPage() {
         
         // 从本地存储获取对话信息来设置模型
         try {
-          const conversation = await localStorageService.getRecord(conversationId);
+          const conversation = await storageService.getRecord(conversationId);
           if (conversation) {
             setSelectedModel(conversation.modelName);
           }
@@ -317,20 +318,20 @@ export function ChatPage() {
         const hasUserContent = originalInput || originalImages.length > 0;
         
         if (hasUserContent) {
-          let activeConversation = currentConversation || await localStorageService.getActiveConversation();
+          let activeConversation = currentConversation || await storageService.getActiveConversation();
           
           if (!activeConversation) {
             // 创建新对话
             const title = originalInput.length > 30 ? originalInput.substring(0, 30) + '...' : 
                           (originalInput || (originalImages.length > 0 ? '图片分析' : '新对话'));
-            activeConversation = await localStorageService.createConversation(title, selectedModel);
+            activeConversation = await storageService.createConversation(title, selectedModel);
           }
           
           // 添加用户消息
-          await localStorageService.addMessageToConversation(activeConversation.id, newUserMessage);
+          await storageService.addMessageToConversation(activeConversation.id, newUserMessage);
           
           // 添加AI回复
-          await localStorageService.addMessageToConversation(activeConversation.id, aiResponse);
+          await storageService.addMessageToConversation(activeConversation.id, aiResponse);
           
           console.log('对话已保存到历史记录');
         } else {

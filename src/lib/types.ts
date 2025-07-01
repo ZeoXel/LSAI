@@ -66,6 +66,8 @@ export interface ListOptions {
   page?: number;
   limit?: number;
   offset?: number;
+  sortBy?: 'createdAt' | 'updatedAt' | 'title';
+  sortOrder?: 'asc' | 'desc';
 }
 
 // 列表响应类型
@@ -95,6 +97,7 @@ export interface StorageService {
   uploadFile(file: File, historyId: string): Promise<MediaFile>;
   getFile(id: string): Promise<MediaFile | null>;
   deleteFile(id: string): Promise<void>;
+  getFilesByHistoryId(historyId: string): Promise<MediaFile[]>;
   
   // 标签管理
   createTag(tag: Omit<Tag, 'id' | 'createdAt'>): Promise<Tag>;

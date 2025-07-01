@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, MessageSquare, Image, Tag, Trash2, Calendar, Download, Eye, X, Edit, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,8 +11,7 @@ import { cn } from '@/lib/utils';
 import { useHistoryStore } from '@/lib/history-store';
 import { useConversationStore } from '@/lib/conversation-store';
 import { HistoryRecord, MediaFile } from '@/lib/types';
-import { localStorageService } from "@/lib/local-storage";
-import { db } from "@/lib/database";
+import { useStorage } from "@/lib/store";
 import { useAppStore } from '@/lib/store';
 import { toast } from 'sonner';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -374,6 +373,19 @@ function MediaGrid() {
   const { records } = useHistoryStore();
   const { setSelectedTool } = useAppStore();
   const { showConfirmDialog, ConfirmDialogComponent } = useConfirmDialog();
+  const storageService = useStorage();  // 使用Supabase存储服务
+
+  // 使用useMemo优化媒体记录的计算，避免不必要的重新渲染
+  const mediaRecords = useMemo(() => 
+    records.filter(r => r.type === 'media'), 
+    [records]
+  );
+
+  // 生成媒体记录的唯一标识，只在真正变化时触发重新加载
+  const mediaRecordsKey = useMemo(() => 
+    mediaRecords.map((r: HistoryRecord) => `${r.id}-${r.updatedAt}`).join('|'),
+    [mediaRecords]
+  );
 
   // 监听获取历史图片数据的事件
   useEffect(() => {
@@ -420,74 +432,34 @@ function MediaGrid() {
 
 
 
-  // 热重载功能：监听媒体文件变化
+  // 移除重复的事件监听，只保留records变化监听，避免闪烁
+
+  // 监听历史记录变化，只在media记录真正变化时重新加载
   useEffect(() => {
-    const handleMediaUpdate = () => {
-      console.log('收到媒体文件更新事件，重新加载...');
-      // 重新加载媒体文件
-      const loadMediaFiles = async () => {
-        setIsLoading(true);
-        try {
-          const allMediaFiles: (MediaFile & { record: HistoryRecord })[] = [];
-          
-          for (const record of records.filter(r => r.type === 'media')) {
-            try {
-              const files = await db.mediaFiles
-                .where('historyId')
-                .equals(record.id)
-                .toArray();
-              
-              files.forEach((file: MediaFile) => {
-                allMediaFiles.push({ ...file, record });
-              });
-            } catch (error) {
-              console.error(`重新加载记录 ${record.id} 的媒体文件失败:`, error);
-            }
-          }
-          
-          allMediaFiles.sort((a, b) => 
-            new Date(b.record.createdAt).getTime() - new Date(a.record.createdAt).getTime()
-          );
-          
-          console.log('媒体文件重新加载完成:', allMediaFiles.length, '个文件');
-          setMediaFiles(allMediaFiles);
-        } catch (error) {
-          console.error('热重载媒体文件失败:', error);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      loadMediaFiles();
-    };
-
-    // 监听媒体更新事件
-    window.addEventListener('mediaFilesUpdated', handleMediaUpdate);
-    
-    return () => {
-      window.removeEventListener('mediaFilesUpdated', handleMediaUpdate);
-    };
-  }, [records]);
-
-  // 监听历史记录变化，自动重新加载媒体文件
-  useEffect(() => {
-    console.log('历史记录发生变化，媒体记录数量:', records.filter(r => r.type === 'media').length);
+    console.log('媒体记录变化，数量:', mediaRecords.length);
     
     const loadMediaFiles = async () => {
       setIsLoading(true);
       try {
         const allMediaFiles: (MediaFile & { record: HistoryRecord })[] = [];
         
-        for (const record of records.filter(r => r.type === 'media')) {
+        for (const record of mediaRecords) {
           try {
-            const files = await db.mediaFiles
-              .where('historyId')
-              .equals(record.id)
-              .toArray();
+            // 使用新的getFilesByHistoryId方法查询媒体文件
+            const files = await storageService.getFilesByHistoryId(record.id);
             
-            files.forEach((file: MediaFile) => {
+            for (const file of files) {
+              // 从URL获取blob数据用于预览
+              try {
+                const response = await fetch(file.url);
+                const blob = await response.blob();
+                file.blob = blob;
+              } catch (blobError) {
+                console.warn(`获取文件 ${file.fileName} 的blob数据失败:`, blobError);
+              }
+              
               allMediaFiles.push({ ...file, record });
-            });
+            }
           } catch (error) {
             console.error(`加载记录 ${record.id} 的媒体文件失败:`, error);
           }
@@ -507,7 +479,7 @@ function MediaGrid() {
     };
 
     loadMediaFiles();
-  }, [records]);
+  }, [mediaRecordsKey, mediaRecords, storageService]);
 
   // 下载图片
   const handleDownload = async (file: MediaFile) => {
@@ -580,8 +552,11 @@ function MediaGrid() {
     }
 
     try {
-      // 从数据库删除记录
-      await db.historyRecords.delete(file.record.id);
+      // 从数据库删除历史记录
+      await storageService.deleteRecord(file.record.id);
+      
+      // 删除媒体文件
+      await storageService.deleteFile(file.id);
       
       // 更新本地状态
       setMediaFiles(prev => prev.filter(f => f.id !== file.id));
@@ -839,6 +814,21 @@ export function HistoryLibrary() {
     initializeData();
   }, [loadRecords, loadTags]);
 
+  // 监听媒体生成成功事件，自动切换到媒体板块
+  useEffect(() => {
+    const handleMediaGenerated = () => {
+      console.log('检测到媒体生成成功，切换到媒体内容板块');
+      setSelectedType('media');
+      setUserManuallyChanged(false); // 重置手动切换状态，允许后续自动切换
+    };
+
+    window.addEventListener('mediaFilesUpdated', handleMediaGenerated);
+    
+    return () => {
+      window.removeEventListener('mediaFilesUpdated', handleMediaGenerated);
+    };
+  }, [setSelectedType]);
+
   // 对话store
   const { loadConversation } = useConversationStore();
 
@@ -957,24 +947,26 @@ export function HistoryLibrary() {
                   <p className="text-sm text-muted-foreground">加载中...</p>
                 </div>
               </div>
-            ) : records.length === 0 ? (
-              // 空状态
+            ) : selectedType === 'media' ? (
+              // 媒体网格 - 让MediaGrid自己处理空状态
+              <MediaGrid />
+            ) : records.filter(record => record.type === selectedType).length === 0 ? (
+              // 文本对话空状态
               <div className="flex items-center justify-center py-8">
                 <div className="text-center">
                   <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">
-                    {searchQuery || selectedType ? '没有找到匹配的记录' : '暂无历史记录'}
+                    {searchQuery || records.length > 0 
+                      ? '没有找到匹配的文本对话记录' 
+                      : '暂无历史记录'}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     开始对话后，记录会自动保存在这里
                   </p>
                 </div>
               </div>
-            ) : selectedType === 'media' ? (
-              // 媒体网格
-              <MediaGrid />
             ) : (
-              // 记录列表
+              // 记录列表 - 实时过滤确保类型匹配
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`text-records-${selectedType}`}
@@ -983,7 +975,9 @@ export function HistoryLibrary() {
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
                 >
-                  {records.map((record, index) => (
+                  {records
+                    .filter(record => record.type === selectedType) // 🔥 关键修复：实时过滤
+                    .map((record, index) => (
                     <motion.div
                       key={record.id}
                       initial={{ opacity: 0, y: 20 }}

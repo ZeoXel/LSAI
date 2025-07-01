@@ -21,12 +21,24 @@ export function Providers({ children }: ProvidersProps) {
   useEffect(() => {
     const initDb = async () => {
       try {
+        // 测试Supabase连接
+        const supabaseService = new SupabaseStorageService();
+        const supabaseConnected = await supabaseService.testConnection();
+        
+        if (supabaseConnected) {
+          console.log('✅ 使用Supabase云数据库');
+          setIsDbInitialized(true);
+          return;
+        }
+        
+        // 回退到本地IndexedDB
+        console.log('⚠️ Supabase连接失败，回退到本地数据库');
         const success = await initializeDatabase();
         if (success) {
           setIsDbInitialized(true);
-          console.log('历史记录数据库初始化完成');
+          console.log('本地数据库初始化完成');
         } else {
-          console.error('历史记录数据库初始化失败');
+          console.error('本地数据库初始化失败');
           setDbError('数据库初始化失败，某些功能可能无法使用');
           setIsDbInitialized(true); // 继续加载应用
         }

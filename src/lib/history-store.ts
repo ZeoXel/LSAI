@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { HistoryRecord, ListOptions, ListResponse, Tag } from './types';
-import { localStorageService } from './local-storage';
+import { HistoryRecord, ListOptions, ListResponse, Tag, StorageService } from './types';
+import { SupabaseStorageService } from './supabase-storage';
+
+// 创建全局存储服务实例
+const storageService = new SupabaseStorageService();
 
 // 历史记录状态接口
 interface HistoryState {
@@ -24,7 +27,7 @@ interface HistoryState {
 
   // Actions
   // 历史记录操作
-  loadRecords: () => Promise<void>;
+  loadRecords: (overrideOptions?: Partial<ListOptions>) => Promise<void>;
   createRecord: (record: Omit<HistoryRecord, 'id' | 'createdAt' | 'updatedAt'>) => Promise<HistoryRecord>;
   updateRecord: (id: string, updates: Partial<HistoryRecord>) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
@@ -81,22 +84,26 @@ export const useHistoryStore = create<HistoryState>()(
         sortBy: 'createdAt',
         sortOrder: 'desc',
 
-      // 历史记录操作
-      loadRecords: async () => {
+      // 历史记录操作 - 支持传入查询参数避免状态时机问题
+      loadRecords: async (overrideOptions?: Partial<ListOptions>) => {
         set({ isLoading: true, error: null });
         
         try {
+          const state = get();
           const options: ListOptions = {
-            page: get().currentPage,
+            page: state.currentPage,
             limit: 20,
-            search: get().searchQuery || undefined,
-            type: get().selectedType || undefined,
-            tags: get().selectedTags.length > 0 ? get().selectedTags : undefined,
-            sortBy: get().sortBy,
-            sortOrder: get().sortOrder
+            search: state.searchQuery || undefined,
+            type: state.selectedType || undefined,
+            tags: state.selectedTags.length > 0 ? state.selectedTags : undefined,
+            sortBy: state.sortBy,
+            sortOrder: state.sortOrder,
+            ...overrideOptions  // 覆盖参数，确保使用最新值
           };
           
-          const response: ListResponse<HistoryRecord> = await localStorageService.listRecords(options);
+          // console.log('🔍 loadRecords with options:', options);
+          
+          const response: ListResponse<HistoryRecord> = await storageService.listRecords(options);
           
           set({
             records: response.items,
@@ -116,7 +123,7 @@ export const useHistoryStore = create<HistoryState>()(
         set({ isLoading: true, error: null });
         
         try {
-          const newRecord = await localStorageService.createRecord(record);
+          const newRecord = await storageService.createRecord(record);
           
           // 重新加载记录列表
           await get().loadRecords();
@@ -136,12 +143,12 @@ export const useHistoryStore = create<HistoryState>()(
         set({ isLoading: true, error: null });
         
         try {
-          await localStorageService.updateRecord(id, updates);
+          await storageService.updateRecord(id, updates);
           
           // 更新本地状态
           set(state => ({
             records: state.records.map(record => 
-              record.id === id ? { ...record, ...updates, updatedAt: new Date() } : record
+              record.id === id ? { ...record, ...updates, updatedAt: new Date().toISOString() } : record
             ),
             isLoading: false
           }));
@@ -157,7 +164,7 @@ export const useHistoryStore = create<HistoryState>()(
         set({ isLoading: true, error: null });
         
         try {
-          await localStorageService.deleteRecord(id);
+          await storageService.deleteRecord(id);
           
           // 从本地状态中移除
           set(state => ({
@@ -173,116 +180,138 @@ export const useHistoryStore = create<HistoryState>()(
         }
       },
 
-      // 筛选和搜索
+      // 筛选和搜索 - 传入准确参数避免状态时机问题
       setSearchQuery: (query) => {
         set({ searchQuery: query, currentPage: 1 });
-        get().loadRecords();
+        get().loadRecords({ search: query || undefined, page: 1 });
       },
 
       setSelectedType: (type) => {
         set({ selectedType: type, currentPage: 1 });
-        get().loadRecords();
+        get().loadRecords({ type: type || undefined, page: 1 });
       },
 
       setSelectedTags: (tags) => {
         set({ selectedTags: tags, currentPage: 1 });
-        get().loadRecords();
+        get().loadRecords({ tags: tags.length > 0 ? tags : undefined, page: 1 });
       },
 
       setSorting: (sortBy, sortOrder) => {
         set({ sortBy, sortOrder, currentPage: 1 });
-        get().loadRecords();
+        get().loadRecords({ sortBy, sortOrder, page: 1 });
       },
 
       setCurrentPage: (page) => {
         set({ currentPage: page });
-        get().loadRecords();
+        get().loadRecords({ page });
       },
 
       // 标签操作
       loadTags: async () => {
+        set({ isLoading: true, error: null });
+        
         try {
-          const tags = await localStorageService.listTags();
-          set({ tags });
+          const tags = await storageService.listTags();
+          set({ tags, isLoading: false });
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : '加载标签失败'
+            error: error instanceof Error ? error.message : '加载标签失败',
+            isLoading: false
           });
         }
       },
 
       createTag: async (tag) => {
+        set({ isLoading: true, error: null });
+        
         try {
-          const newTag = await localStorageService.createTag(tag);
-          set(state => ({
-            tags: [...state.tags, newTag]
-          }));
+          const newTag = await storageService.createTag(tag);
+          
+          // 重新加载标签列表
+          await get().loadTags();
+          
+          set({ isLoading: false });
           return newTag;
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : '创建标签失败'
+            error: error instanceof Error ? error.message : '创建标签失败',
+            isLoading: false
           });
           throw error;
         }
       },
 
       deleteTag: async (id) => {
+        set({ isLoading: true, error: null });
+        
         try {
-          await localStorageService.deleteTag(id);
-          set(state => ({
-            tags: state.tags.filter(tag => tag.id !== id),
-            selectedTags: state.selectedTags.filter(tagId => tagId !== id)
-          }));
+          await storageService.deleteTag(id);
           
-          // 重新加载记录以更新标签引用
-          get().loadRecords();
+          // 重新加载标签列表
+          await get().loadTags();
+          
+          set({ isLoading: false });
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : '删除标签失败'
+            error: error instanceof Error ? error.message : '删除标签失败',
+            isLoading: false
           });
         }
       },
 
-      // 工具方法
-      clearError: () => set({ error: null }),
-
-      resetFilters: () => {
-        set({
-          searchQuery: '',
-          selectedTags: [],
-          currentPage: 1
-        });
-        get().loadRecords();
-      },
-
       // 对话对话管理
       createConversation: async (title, modelName) => {
+        set({ isLoading: true, error: null });
+        
         try {
-          const conversation = await localStorageService.createConversation(title, modelName);
-          get().loadRecords(); // 刷新列表
+          const conversation = await storageService.createConversation(title, modelName);
+          
+          // 重新加载记录列表
+          await get().loadRecords();
+          
+          set({ isLoading: false });
           return conversation;
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : '创建对话失败'
+            error: error instanceof Error ? error.message : '创建对话失败',
+            isLoading: false
           });
           throw error;
         }
       },
 
       loadConversation: async (id) => {
+        set({ isLoading: true, error: null });
+        
         try {
-          await localStorageService.setActiveConversation(id);
-          // 通知其他组件对话已切换
+          await storageService.setActiveConversation(id);
+          set({ isLoading: false });
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : '加载对话失败'
+            error: error instanceof Error ? error.message : '加载对话失败',
+            isLoading: false
           });
         }
+      },
+
+      // 工具方法
+      clearError: () => {
+        set({ error: null });
+      },
+
+      resetFilters: () => {
+        set({
+          searchQuery: '',
+          selectedType: null,
+          selectedTags: [],
+          currentPage: 1
+        });
+        get().loadRecords();
       }
-      };
-    },
-    {
-      name: 'history-store',
-    }
-  )
+    };
+  },
+  {
+    name: 'history-store'
+  }
+)
 ); 

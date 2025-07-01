@@ -20,8 +20,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHistoryStore } from "@/lib/history-store";
-import { localStorageService } from "@/lib/local-storage";
 import { PromptOptimizer } from "@/components/ai/PromptOptimizer";
+import { useAppStore, useStorage } from "@/lib/store";
 
 // 图像生成模型配置
 const IMAGE_MODELS = [
@@ -106,6 +106,7 @@ const saveRecordsToStorage = (records: GenerationRecord[]) => {
 };
 
 export function ImageGenerator() {
+  const storageService = useStorage();
   const [selectedModel, setSelectedModel] = useState("seedream-3.0");
   const [selectedSize, setSelectedSize] = useState("1024x1024");
   const [prompt, setPrompt] = useState("");
@@ -586,14 +587,30 @@ export function ImageGenerator() {
       }
 
       const data = await response.json();
-      console.log("API返回数据:", data);
+      console.log("📦 API返回完整数据:", JSON.stringify(data, null, 2));
 
       if (!response.ok) {
         throw new Error(data.error || "生成失败");
       }
 
-      const imageUrl = data.images?.[0]?.url;
-      console.log("提取的图像URL:", imageUrl);
+      // 检查images字段
+      console.log("🔍 检查images字段:", data.images);
+      console.log("🔍 images是否为数组:", Array.isArray(data.images));
+      console.log("🔍 images长度:", data.images?.length);
+      
+      if (!data.images || !Array.isArray(data.images) || data.images.length === 0) {
+        console.error("❌ 返回数据中没有有效的images字段");
+        throw new Error("图像生成失败：未返回图像数据");
+      }
+
+      const imageUrl = data.images[0]?.url;
+      console.log("🖼️ 提取的图像URL:", imageUrl);
+      
+      if (!imageUrl) {
+        console.error("❌ 第一个图像对象中没有URL字段");
+        console.log("🔍 第一个图像对象:", data.images[0]);
+        throw new Error("图像生成失败：图像URL无效");
+      }
 
       // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
       const currentRecords = loadRecordsFromStorage();
@@ -630,7 +647,7 @@ export function ImageGenerator() {
           });
           
           // 创建媒体类型的历史记录
-          const mediaRecord = await localStorageService.createRecord({
+          const mediaRecord = await storageService.createRecord({
             type: 'media',
             title: newRecord.prompt.slice(0, 50) + (newRecord.prompt.length > 50 ? '...' : ''),
             messages: [],
@@ -645,7 +662,7 @@ export function ImageGenerator() {
           });
           
           // 上传图片文件
-          await localStorageService.uploadFile(imageFile, mediaRecord.id);
+          await storageService.uploadFile(imageFile, mediaRecord.id);
           
           console.log("图片已保存到历史记录数据库");
           
