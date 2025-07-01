@@ -8,6 +8,8 @@ import { Toaster } from "sonner";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StorageContext } from '@/lib/store';
 import { SupabaseStorageService } from '@/lib/supabase-storage';
+import { localStorageService } from '@/lib/local-storage';
+import type { StorageService } from '@/lib/types';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -16,35 +18,40 @@ interface ProvidersProps {
 export function Providers({ children }: ProvidersProps) {
   const [isDbInitialized, setIsDbInitialized] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [storageService, setStorageService] = useState<StorageService | null>(null);
   const { showConfirmDialog, ConfirmDialogComponent } = useConfirmDialog();
 
   useEffect(() => {
     const initDb = async () => {
       try {
-        // 测试Supabase连接
+        // 🔧 尝试Supabase连接
         const supabaseService = new SupabaseStorageService();
         const supabaseConnected = await supabaseService.testConnection();
         
         if (supabaseConnected) {
           console.log('✅ 使用Supabase云数据库');
+          setStorageService(supabaseService);
           setIsDbInitialized(true);
           return;
         }
         
-        // 回退到本地IndexedDB
+        // 🔧 Supabase连接失败，回退到本地IndexedDB + localStorage服务
         console.log('⚠️ Supabase连接失败，回退到本地数据库');
         const success = await initializeDatabase();
         if (success) {
+          setStorageService(localStorageService);
           setIsDbInitialized(true);
-          console.log('本地数据库初始化完成');
+          console.log('✅ 本地数据库初始化完成');
         } else {
-          console.error('本地数据库初始化失败');
+          console.error('❌ 本地数据库初始化失败');
+          setStorageService(localStorageService); // 仍然提供服务
           setDbError('数据库初始化失败，某些功能可能无法使用');
-          setIsDbInitialized(true); // 继续加载应用
+          setIsDbInitialized(true);
         }
       } catch (error) {
-        console.error('数据库初始化异常:', error);
-        setDbError('数据库初始化异常，请刷新页面重试');
+        console.error('❌ 数据库初始化异常:', error);
+        setStorageService(localStorageService); // fallback
+        setDbError('数据库初始化异常，已回退到本地存储');
         setIsDbInitialized(true);
       }
     };
@@ -73,12 +80,13 @@ export function Providers({ children }: ProvidersProps) {
     }
   };
 
-  if (!isDbInitialized) {
+  // 🔧 等待初始化完成和服务准备
+  if (!isDbInitialized || !storageService) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-sm text-muted-foreground">正在初始化历史记录数据库...</p>
+          <p className="text-sm text-muted-foreground">正在初始化存储服务...</p>
         </div>
       </div>
     );
@@ -86,14 +94,14 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <StorageContext.Provider value={new SupabaseStorageService()}>
+      <StorageContext.Provider value={storageService}>
         {dbError && (
-          <div className="fixed top-4 right-4 z-50 max-w-sm bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg">
+          <div className="fixed top-4 right-4 z-50 max-w-sm bg-muted/10 border border-muted/20 text-muted-foreground px-4 py-3 rounded-lg">
             <div className="flex items-center justify-between">
               <p className="text-sm">{dbError}</p>
               <button
                 onClick={handleClearDatabase}
-                className="ml-2 text-xs bg-destructive/20 hover:bg-destructive/30 px-2 py-1 rounded"
+                className="ml-2 text-xs bg-muted/20 hover:bg-muted/30 px-2 py-1 rounded"
               >
                 清理数据库
               </button>

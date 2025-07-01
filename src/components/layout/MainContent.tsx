@@ -33,7 +33,6 @@ export function MainContent({ children }: MainContentProps) {
   // 处理新建对话
   const handleNewConversation = async () => {
     if (selectedTool === 'chat') {
-      // 不直接创建对话，而是通过事件通知ChatPage组件
       window.dispatchEvent(new CustomEvent('newChatSession'));
     }
   };

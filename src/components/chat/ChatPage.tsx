@@ -70,13 +70,24 @@ export function ChatPage() {
   // Store hooks
   const { loadRecords } = useHistoryStore();
   const { 
-    currentConversation, 
     messages, 
     setMessages, 
     addMessage, 
-    clearConversation,
-    loadConversation
+    clearConversation
   } = useConversationStore();
+
+  // 🔧 会话对话ID管理 - 用于分组存储
+  const getCurrentSessionConversationId = (): string | null => {
+    return sessionStorage.getItem('currentChatConversationId');
+  };
+  
+  const setCurrentSessionConversationId = (id: string | null) => {
+    if (id) {
+      sessionStorage.setItem('currentChatConversationId', id);
+    } else {
+      sessionStorage.removeItem('currentChatConversationId');
+    }
+  };
 
   // 自动滚动到底部的函数
   const scrollToBottom = () => {
@@ -93,10 +104,15 @@ export function ChatPage() {
     scrollToBottom();
   }, []);
 
-  // 消息更新时滚动到底部
+  // 🔧 消息更新时滚动到底部 - 优化历史对话加载体验
   useEffect(() => {
     if (messages.length > 0) {
-      scrollToBottom();
+      // 🔧 延迟滚动，让消息先完全渲染，避免加载历史对话时的闪烁
+      const timeoutId = setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [messages]);
 
@@ -107,21 +123,50 @@ export function ChatPage() {
     }
   }, [isTyping]);
   
-  // 加载当前对话
+  // 🔧 页面加载时恢复对话状态（支持热重载）
   useEffect(() => {
-    const loadCurrentConversation = async () => {
+    const restoreConversationState = async () => {
       try {
+        // 🔧 检查sessionStorage中是否有当前对话ID
+        const sessionConversationId = getCurrentSessionConversationId();
+        
+        if (sessionConversationId) {
+          // 🔧 恢复具体对话
+          const conversation = await storageService.getRecord(sessionConversationId);
+          if (conversation) {
+            const messages = conversation.content?.messages || conversation.messages || [];
+            if (messages.length > 0) {
+              setMessages(messages);
+              setSelectedModel(conversation.modelName);
+              console.log('✅ 会话对话状态已恢复:', conversation.title, `包含${messages.length}条消息`);
+              return;
+            }
+          }
+        }
+        
+        // 🔧 fallback: 尝试从存储服务获取活跃对话
         const conversation = await storageService.getActiveConversation();
         if (conversation) {
           setMessages(conversation.messages);
           setSelectedModel(conversation.modelName);
+          console.log('✅ 活跃对话状态已恢复:', conversation.title);
+        } else {
+          // 🔧 没有任何对话时，显示初始问候语
+          setMessages([
+            {
+              id: "1",
+              role: "assistant",
+              content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
+              timestamp: Date.now(),
+            },
+          ]);
         }
       } catch (error) {
-        console.error('加载当前对话失败:', error);
+        console.error('⚠️ 恢复对话状态失败:', error);
       }
     };
     
-    loadCurrentConversation();
+    restoreConversationState();
   }, [setMessages]);
 
   // 监听历史记录点击跳转事件
@@ -129,17 +174,39 @@ export function ChatPage() {
     const handleLoadHistoryConversation = async (event: CustomEvent) => {
       const { conversationId } = event.detail;
       if (conversationId) {
-        await loadConversation(conversationId);
-        setSelectedImages([]);
-        
-        // 从本地存储获取对话信息来设置模型
         try {
+          // 🔧 直接从存储服务加载对话数据
           const conversation = await storageService.getRecord(conversationId);
           if (conversation) {
+            // 🔧 设置当前会话对话ID
+            setCurrentSessionConversationId(conversationId);
+            
+            // 🔧 加载消息到UI - 避免fallback，直接使用历史消息
+            const messages = conversation.content?.messages || conversation.messages || [];
+            if (messages.length > 0) {
+              setMessages(messages);
+            } else {
+              // 只有在真的没有消息时才显示默认消息
+              setMessages([
+                {
+                  id: "1",
+                  role: "assistant",
+                  content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
+                  timestamp: Date.now(),
+                },
+              ]);
+            }
+            
+            // 🔧 设置模型
             setSelectedModel(conversation.modelName);
+            
+            // 🔧 清空选中的图片
+            setSelectedImages([]);
+            
+            console.log('✅ 历史对话已加载:', conversation.title, `包含${messages.length}条消息`);
           }
         } catch (error) {
-          console.error('获取对话模型失败:', error);
+          console.error('❌ 加载历史对话失败:', error);
         }
       }
     };
@@ -149,7 +216,7 @@ export function ChatPage() {
     return () => {
       window.removeEventListener('loadHistoryConversation', handleLoadHistoryConversation as any);
     };
-  }, [loadConversation]);
+  }, [setMessages]);
 
   // 监听新建对话事件
   useEffect(() => {
@@ -167,65 +234,25 @@ export function ChatPage() {
   // 新建对话
   const handleNewConversation = async () => {
     try {
-      // 🔧 关键修复：在清空前先保存当前对话到历史记录
-      await saveCurrentConversationToHistory();
-      
       clearConversation();
       setSelectedImages([]);
+      // 🔧 清空当前会话对话ID，开始新的对话分组
+      setCurrentSessionConversationId(null);
+      
+      // 🔧 显示新对话的问候语
+      setMessages([
+        {
+          id: "1",
+          role: "assistant",
+          content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
+          timestamp: Date.now(),
+        },
+      ]);
+      
       loadRecords(); // 刷新历史记录列表
-      console.log('已保存当前对话并开始新对话');
+      console.log('✅ 已开始新对话会话');
     } catch (error) {
       console.error('新建对话失败:', error);
-    }
-  };
-
-  // 保存当前对话到历史记录
-  const saveCurrentConversationToHistory = async () => {
-    try {
-      // 检查当前是否有有效的对话内容（排除初始欢迎消息）
-      const validMessages = messages.filter(msg => 
-        msg.id !== "1" && // 排除初始欢迎消息
-        (typeof msg.content === 'string' ? msg.content.trim() : msg.content.length > 0)
-      );
-
-      if (validMessages.length === 0) {
-        console.log('当前对话为空，无需保存');
-        return;
-      }
-
-      let activeConversation = currentConversation || await storageService.getActiveConversation();
-      
-      if (!activeConversation) {
-        // 根据第一条用户消息生成标题
-        const firstUserMessage = validMessages.find(msg => msg.role === 'user');
-        let title = '新对话';
-        
-        if (firstUserMessage) {
-          if (typeof firstUserMessage.content === 'string') {
-            title = firstUserMessage.content.length > 30 
-              ? firstUserMessage.content.substring(0, 30) + '...' 
-              : firstUserMessage.content;
-          } else {
-            // 混合内容消息
-            const textContent = firstUserMessage.content.find(item => item.type === 'text');
-            title = textContent 
-              ? (textContent.text.length > 30 ? textContent.text.substring(0, 30) + '...' : textContent.text)
-              : '图片分析';
-          }
-        }
-        
-        activeConversation = await storageService.createConversation(title, selectedModel);
-        console.log('为当前对话创建历史记录:', title);
-      }
-
-      // 保存所有有效消息到对话记录
-      for (const message of validMessages) {
-        await storageService.addMessageToConversation(activeConversation.id, message);
-      }
-      
-      console.log(`对话已保存到历史记录，包含 ${validMessages.length} 条消息`);
-    } catch (error) {
-      console.error('保存当前对话失败:', error);
     }
   };
 
@@ -367,34 +394,38 @@ export function ChatPage() {
       // 立即隐藏"思考中"气泡
       setIsTyping(false);
 
-      // 🔧 简化保存逻辑：实时保存消息到当前对话
+      // 🔧 重新构建的分组存储逻辑
       try {
-        // 检查是否有实际的用户输入内容
         const hasUserContent = originalInput || originalImages.length > 0;
         
         if (hasUserContent) {
-          let activeConversation = currentConversation;
+          // 🔧 获取当前会话的对话ID
+          let conversationId = getCurrentSessionConversationId();
           
-          // 如果没有当前对话，创建新的（这通常只在第一次发送消息时发生）
-          if (!activeConversation) {
+          if (!conversationId) {
+            // 🔧 创建新对话记录
             const title = originalInput.length > 30 ? originalInput.substring(0, 30) + '...' : 
                           (originalInput || (originalImages.length > 0 ? '图片分析' : '新对话'));
-            activeConversation = await storageService.createConversation(title, selectedModel);
             
-            // 更新ConversationStore状态
-            await loadConversation(activeConversation.id);
-            console.log('创建新对话记录:', activeConversation.title);
+            const newConversation = await storageService.createConversation(title, selectedModel);
+            conversationId = newConversation.id;
+            
+            // 🔧 保存到会话存储，后续消息都会添加到这个对话中
+            setCurrentSessionConversationId(conversationId);
+            
+            console.log('✅ 创建新对话记录:', { id: conversationId, title });
           }
           
-          // 添加消息到对话（无论新建还是现有对话）
-          await storageService.addMessageToConversation(activeConversation.id, newUserMessage);
-          await storageService.addMessageToConversation(activeConversation.id, aiResponse);
-          console.log('消息已保存到对话，对话ID:', activeConversation.id);
+          // 🔧 添加消息到对话记录
+          await storageService.addMessageToConversation(conversationId, newUserMessage);
+          await storageService.addMessageToConversation(conversationId, aiResponse);
+          
+          console.log('✅ 消息已添加到对话记录:', conversationId);
         } else {
-          console.log('空消息未保存');
+          console.log('⚠️ 空对话未保存');
         }
       } catch (saveError) {
-        console.error('保存消息失败:', saveError);
+        console.error('❌ 保存历史记录失败:', saveError);
       }
     } catch (error: unknown) {
       console.error('Chat error:', error);

@@ -43,7 +43,7 @@ export class LocalStorageService implements StorageService {
   
   // 历史记录管理
   async createRecord(record: Omit<HistoryRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<HistoryRecord> {
-    const now = new Date();
+    const now = new Date().toISOString();
     const newRecord: HistoryRecord = {
       ...record,
       id: generateId(),
@@ -198,6 +198,10 @@ export class LocalStorageService implements StorageService {
       }
     }
     await db.mediaFiles.delete(id);
+  }
+
+  async getFilesByHistoryId(historyId: string): Promise<MediaFile[]> {
+    return db.mediaFiles.where('historyId').equals(historyId).toArray();
   }
 
   // 标签管理

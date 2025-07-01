@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { ChatMessage, HistoryRecord } from './types';
-import { localStorageService } from './local-storage';
+// 🔧 使用动态导入获取当前存储服务，而不是固定的localStorageService
 
 interface ConversationState {
   // 当前对话状态
@@ -20,39 +20,22 @@ interface ConversationState {
 export const useConversationStore = create<ConversationState>()(
   devtools(
     (set, get) => ({
-      // 初始状态
+      // 🔧 初始状态 - 避免默认显示问候语，让ChatPage控制何时显示
       currentConversation: null,
-      messages: [
-        {
-          id: "1",
-          role: "assistant",
-          content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
-          timestamp: Date.now(),
-        },
-      ],
+      messages: [],
       isLoading: false,
 
-      // 加载特定对话
+      // 🔧 加载特定对话 - 简化版本，主要用于UI状态更新
       loadConversation: async (conversationId: string) => {
         set({ isLoading: true });
         
         try {
-          const conversation = await localStorageService.getRecord(conversationId);
-          if (conversation) {
-            await localStorageService.setActiveConversation(conversationId);
-            set({
-              currentConversation: conversation,
-              messages: conversation.messages.length > 0 ? conversation.messages : [
-                {
-                  id: "1",
-                  role: "assistant",
-                  content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
-                  timestamp: Date.now(),
-                },
-              ],
-              isLoading: false
-            });
-          }
+          // 🔧 简化逻辑：只更新对话ID，消息内容由ChatPage处理
+          set({
+            currentConversation: { id: conversationId } as HistoryRecord,
+            messages: [], // 让ChatPage来设置具体消息
+            isLoading: false
+          });
         } catch (error) {
           console.error('加载对话失败:', error);
           set({ isLoading: false });
@@ -71,41 +54,22 @@ export const useConversationStore = create<ConversationState>()(
         }));
       },
 
-      // 清空对话
+      // 🔧 清空对话 - 只清空状态，让ChatPage控制何时显示问候语
       clearConversation: () => {
         set({
           currentConversation: null,
-          messages: [
-            {
-              id: "1",
-              role: "assistant",
-              content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
-              timestamp: Date.now(),
-            },
-          ]
+          messages: []
         });
-        // 清空活跃对话，但不创建新的历史记录
-        localStorageService.setActiveConversation(null);
+        // 🔧 不再直接操作存储，由调用方处理
       },
 
-      // 创建新对话
+      // 🔧 创建新对话 - 简化版本，主要存储逻辑由ChatPage处理
       createNewConversation: async (title: string, modelName: string) => {
-        try {
-          const conversation = await localStorageService.createConversation(title, modelName);
-          set({
-            currentConversation: conversation,
-            messages: [
-              {
-                id: "1",
-                role: "assistant",
-                content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
-                timestamp: Date.now(),
-              },
-            ]
-          });
-        } catch (error) {
-          console.error('创建新对话失败:', error);
-        }
+        // 🔧 只清空状态，让ChatPage控制何时显示问候语
+        set({
+          currentConversation: null,
+          messages: []
+        });
       }
     }),
     {
