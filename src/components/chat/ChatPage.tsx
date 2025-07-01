@@ -167,12 +167,65 @@ export function ChatPage() {
   // 新建对话
   const handleNewConversation = async () => {
     try {
+      // 🔧 关键修复：在清空前先保存当前对话到历史记录
+      await saveCurrentConversationToHistory();
+      
       clearConversation();
       setSelectedImages([]);
       loadRecords(); // 刷新历史记录列表
-      console.log('已开始新对话，将在有内容时保存到历史记录');
+      console.log('已保存当前对话并开始新对话');
     } catch (error) {
       console.error('新建对话失败:', error);
+    }
+  };
+
+  // 保存当前对话到历史记录
+  const saveCurrentConversationToHistory = async () => {
+    try {
+      // 检查当前是否有有效的对话内容（排除初始欢迎消息）
+      const validMessages = messages.filter(msg => 
+        msg.id !== "1" && // 排除初始欢迎消息
+        (typeof msg.content === 'string' ? msg.content.trim() : msg.content.length > 0)
+      );
+
+      if (validMessages.length === 0) {
+        console.log('当前对话为空，无需保存');
+        return;
+      }
+
+      let activeConversation = currentConversation || await storageService.getActiveConversation();
+      
+      if (!activeConversation) {
+        // 根据第一条用户消息生成标题
+        const firstUserMessage = validMessages.find(msg => msg.role === 'user');
+        let title = '新对话';
+        
+        if (firstUserMessage) {
+          if (typeof firstUserMessage.content === 'string') {
+            title = firstUserMessage.content.length > 30 
+              ? firstUserMessage.content.substring(0, 30) + '...' 
+              : firstUserMessage.content;
+          } else {
+            // 混合内容消息
+            const textContent = firstUserMessage.content.find(item => item.type === 'text');
+            title = textContent 
+              ? (textContent.text.length > 30 ? textContent.text.substring(0, 30) + '...' : textContent.text)
+              : '图片分析';
+          }
+        }
+        
+        activeConversation = await storageService.createConversation(title, selectedModel);
+        console.log('为当前对话创建历史记录:', title);
+      }
+
+      // 保存所有有效消息到对话记录
+      for (const message of validMessages) {
+        await storageService.addMessageToConversation(activeConversation.id, message);
+      }
+      
+      console.log(`对话已保存到历史记录，包含 ${validMessages.length} 条消息`);
+    } catch (error) {
+      console.error('保存当前对话失败:', error);
     }
   };
 
@@ -310,35 +363,38 @@ export function ChatPage() {
       };
 
       addMessage(aiResponse);
+      
+      // 立即隐藏"思考中"气泡
+      setIsTyping(false);
 
-      // 保存消息到当前对话 - 只有包含实际内容的对话才保存
+      // 🔧 简化保存逻辑：实时保存消息到当前对话
       try {
-        // 检查是否有实际的用户输入内容（排除初始问候语）
-        // 使用保存的原始输入进行判断
+        // 检查是否有实际的用户输入内容
         const hasUserContent = originalInput || originalImages.length > 0;
         
         if (hasUserContent) {
-          let activeConversation = currentConversation || await storageService.getActiveConversation();
+          let activeConversation = currentConversation;
           
+          // 如果没有当前对话，创建新的（这通常只在第一次发送消息时发生）
           if (!activeConversation) {
-            // 创建新对话
             const title = originalInput.length > 30 ? originalInput.substring(0, 30) + '...' : 
                           (originalInput || (originalImages.length > 0 ? '图片分析' : '新对话'));
             activeConversation = await storageService.createConversation(title, selectedModel);
+            
+            // 更新ConversationStore状态
+            await loadConversation(activeConversation.id);
+            console.log('创建新对话记录:', activeConversation.title);
           }
           
-          // 添加用户消息
+          // 添加消息到对话（无论新建还是现有对话）
           await storageService.addMessageToConversation(activeConversation.id, newUserMessage);
-          
-          // 添加AI回复
           await storageService.addMessageToConversation(activeConversation.id, aiResponse);
-          
-          console.log('对话已保存到历史记录');
+          console.log('消息已保存到对话，对话ID:', activeConversation.id);
         } else {
-          console.log('空对话未保存到历史记录');
+          console.log('空消息未保存');
         }
       } catch (saveError) {
-        console.error('保存历史记录失败:', saveError);
+        console.error('保存消息失败:', saveError);
       }
     } catch (error: unknown) {
       console.error('Chat error:', error);
@@ -353,7 +409,7 @@ export function ChatPage() {
       };
 
       addMessage(errorMessage);
-    } finally {
+      // 错误时也要隐藏"思考中"气泡
       setIsTyping(false);
     }
   };
