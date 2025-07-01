@@ -742,12 +742,82 @@ export function ChatPage() {
                 <img
                   src={URL.createObjectURL(image)}
                   alt={`图片 ${index + 1}`}
-                  className="max-w-full h-auto rounded-lg"
+                  className="w-16 h-16 object-cover rounded-lg border-2 border-border"
                 />
+                <Button
+                  size="icon"
+                  variant="destructive"
+                  className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => removeImage(index)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+                <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 rounded-b-lg truncate">
+                  {image.name}
+                </div>
               </div>
             ))}
           </div>
         )}
+
+        {/* 输入区域 */}
+        <div 
+          className={cn(
+            "relative transition-all duration-200",
+            isDragOver && "ring-2 ring-primary/50 bg-primary/5"
+          )}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleImageSelect}
+          />
+          
+          <textarea
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder={
+              isDragOver 
+                ? "松开鼠标添加图片..." 
+                : "输入消息... (支持拖拽图片上传，Enter发送，Shift+Enter换行)"
+            }
+            className={cn(
+              "w-full min-h-16 max-h-32 p-3 text-sm bg-background border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-200 pr-20",
+              isDragOver && "border-primary/50 bg-primary/5"
+            )}
+            disabled={isTyping}
+          />
+          
+          {/* 右下角按钮组 */}
+          <div className="absolute bottom-2 right-2 flex items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 hover:bg-muted/80"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isTyping}
+            >
+              <ImageIcon className="h-4 w-4" />
+            </Button>
+            
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={handleSendMessage}
+              disabled={(!inputValue.trim() && selectedImages.length === 0) || isTyping}
+              className="h-8 w-8 hover:bg-muted/80"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

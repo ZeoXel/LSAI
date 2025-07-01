@@ -123,7 +123,11 @@ export function VideoGenerator() {
   const [prompt, setPrompt] = useState("");
   const [records, setRecords] = useState<GenerationRecord[]>(() => loadRecordsFromStorage());
   const [showModelSelector, setShowModelSelector] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(() => {
+    // 初始化时检查是否有正在生成的任务
+    const loadedRecords = loadRecordsFromStorage();
+    return loadedRecords.some(record => record.isGenerating);
+  });
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [selectedImages, setSelectedImages] = useState<File[]>([]); // 多图支持
   const [isDragOver, setIsDragOver] = useState(false);
@@ -181,6 +185,49 @@ export function VideoGenerator() {
   useEffect(() => {
     saveRecordsToStorage(records);
   }, [records]);
+
+  // 组件挂载时清理过期的生成状态
+  useEffect(() => {
+    const cleanupStaleGenerations = () => {
+      const currentTime = Date.now();
+      const maxGenerationTime = 15 * 60 * 1000; // 15分钟超时（视频生成比图像更久）
+      
+      // 直接从localStorage加载最新记录进行清理
+      const currentRecords = loadRecordsFromStorage();
+      const updatedRecords = currentRecords.map(record => {
+        // 如果记录标记为正在生成，但已超过最大生成时间，标记为失败
+        if (record.isGenerating && (currentTime - record.timestamp.getTime()) > maxGenerationTime) {
+          console.log(`清理过期视频生成任务: ${record.id}, 耗时: ${(currentTime - record.timestamp.getTime()) / 1000}秒`);
+          return {
+            ...record,
+            isGenerating: false,
+            error: '生成超时，请重新尝试'
+          };
+        }
+        return record;
+      });
+      
+      // 检查是否有清理，如果有则保存到localStorage并更新组件状态
+      const hasChanges = updatedRecords.some((record, index) => 
+        record.isGenerating !== currentRecords[index]?.isGenerating || 
+        record.error !== currentRecords[index]?.error
+      );
+      
+      if (hasChanges) {
+        console.log('已清理过期的视频生成任务');
+        saveRecordsToStorage(updatedRecords);
+        setRecords(updatedRecords);
+      }
+    };
+    
+    // 组件挂载时立即检查一次
+    cleanupStaleGenerations();
+    
+    // 每60秒检查一次过期任务（视频生成时间更长，检查频率可以稍低）
+    const cleanupInterval = setInterval(cleanupStaleGenerations, 60000);
+    
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   // 多图上传时自动切换到kling-v1-6模型
   useEffect(() => {
@@ -266,7 +313,9 @@ export function VideoGenerator() {
       const { recordId, videoUrl, thumbnailUrl } = event.detail;
       console.log('🎬 收到视频生成完成事件:', recordId);
       
-      setRecords(prev => prev.map(record => 
+      // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
+      const currentRecords = loadRecordsFromStorage();
+      const updatedRecords = currentRecords.map(record => 
         record.id === recordId 
           ? { 
               ...record, 
@@ -275,17 +324,49 @@ export function VideoGenerator() {
               isGenerating: false 
             }
           : record
-      ));
+      );
+      saveRecordsToStorage(updatedRecords);
+
+      // 更新组件状态（如果组件还存在）
+      setRecords(updatedRecords);
       
       setIsGenerating(false);
     };
 
+    // 监听来自其他组件的视频生成完成通知
+    const handleVideoGenerationComplete = (event: CustomEvent) => {
+      const { taskId, videoUrl, success, error } = event.detail;
+      
+      if (taskId) {
+        // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
+        const currentRecords = loadRecordsFromStorage();
+        const updatedRecords = currentRecords.map(record => {
+          if (record.id === taskId) {
+            console.log(`收到视频生成完成通知: ${taskId}, 成功: ${success}`);
+            return {
+              ...record,
+              isGenerating: false,
+              videoUrl: success ? videoUrl : undefined,
+              error: success ? undefined : (error || '生成失败')
+            };
+          }
+          return record;
+        });
+        
+        // 保存到localStorage并更新组件状态
+        saveRecordsToStorage(updatedRecords);
+        setRecords(updatedRecords);
+      }
+    };
+
     window.addEventListener('newVideoSession', handleNewSession);
     window.addEventListener('videoGenerationCompleted', handleVideoCompleted as EventListener);
+    window.addEventListener('videoGenerationComplete', handleVideoGenerationComplete as EventListener);
     
     return () => {
       window.removeEventListener('newVideoSession', handleNewSession);
       window.removeEventListener('videoGenerationCompleted', handleVideoCompleted as EventListener);
+      window.removeEventListener('videoGenerationComplete', handleVideoGenerationComplete as EventListener);
     };
   }, []);
 
@@ -313,6 +394,12 @@ export function VideoGenerator() {
         scrollToBottom();
       }, 100);
     }
+  }, [records]);
+
+  // 监听records变化，同步isGenerating状态
+  useEffect(() => {
+    const hasActiveGeneration = records.some(record => record.isGenerating);
+    setIsGenerating(hasActiveGeneration);
   }, [records]);
 
   // 监听页面可见性变化，恢复生成状态
@@ -571,8 +658,9 @@ export function VideoGenerator() {
         throw new Error(data.error || "视频生成失败");
       }
 
-      // 更新记录
-      setRecords(prev => prev.map(record => 
+      // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
+      const currentRecords = loadRecordsFromStorage();
+      const updatedRecords = currentRecords.map(record => 
         record.id === newRecord.id 
           ? { 
               ...record, 
@@ -581,7 +669,21 @@ export function VideoGenerator() {
               isGenerating: false 
             }
           : record
-      ));
+      );
+      saveRecordsToStorage(updatedRecords);
+
+      // 更新组件状态（如果组件还存在）
+      setRecords(updatedRecords);
+
+      // 触发生成完成事件通知
+      window.dispatchEvent(new CustomEvent('videoGenerationComplete', {
+        detail: {
+          taskId: newRecord.id,
+          videoUrl: data.videoUrl,
+          success: true,
+          prompt: newRecord.prompt
+        }
+      }));
 
       // 保存视频到历史记录数据库
       if (data.videoUrl) {
@@ -649,12 +751,27 @@ export function VideoGenerator() {
     } catch (error) {
       console.error("生成错误:", error);
       
-      // 更新记录为错误状态
-      setRecords(prev => prev.map(record => 
+      // 直接更新localStorage中的记录为错误状态（防止组件卸载时状态丢失）
+      const currentRecords = loadRecordsFromStorage();
+      const updatedRecords = currentRecords.map(record => 
         record.id === newRecord.id 
           ? { ...record, error: error instanceof Error ? error.message : "生成失败", isGenerating: false }
           : record
-      ));
+      );
+      saveRecordsToStorage(updatedRecords);
+
+      // 更新组件状态（如果组件还存在）
+      setRecords(updatedRecords);
+
+      // 触发生成失败事件通知
+      window.dispatchEvent(new CustomEvent('videoGenerationComplete', {
+        detail: {
+          taskId: newRecord.id,
+          success: false,
+          error: error instanceof Error ? error.message : "生成失败",
+          prompt: newRecord.prompt
+        }
+      }));
 
       toast.error(error instanceof Error ? error.message : "生成失败");
     } finally {

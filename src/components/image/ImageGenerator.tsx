@@ -111,7 +111,11 @@ export function ImageGenerator() {
   const [prompt, setPrompt] = useState("");
   const [records, setRecords] = useState<GenerationRecord[]>(() => loadRecordsFromStorage());
   const [showModelSelector, setShowModelSelector] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(() => {
+    // 初始化时检查是否有正在生成的任务
+    const loadedRecords = loadRecordsFromStorage();
+    return loadedRecords.some(record => record.isGenerating);
+  });
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [selectedImages, setSelectedImages] = useState<File[]>([]); // 多图片选择
   const [autoUseLastImage, setAutoUseLastImage] = useState(false); // 自动使用上一张图片
@@ -134,6 +138,49 @@ export function ImageGenerator() {
   useEffect(() => {
     saveRecordsToStorage(records);
   }, [records]);
+
+  // 组件挂载时清理过期的生成状态
+  useEffect(() => {
+    const cleanupStaleGenerations = () => {
+      const currentTime = Date.now();
+      const maxGenerationTime = 10 * 60 * 1000; // 10分钟超时
+      
+      // 直接从localStorage加载最新记录进行清理
+      const currentRecords = loadRecordsFromStorage();
+      const updatedRecords = currentRecords.map(record => {
+        // 如果记录标记为正在生成，但已超过最大生成时间，标记为失败
+        if (record.isGenerating && (currentTime - record.timestamp.getTime()) > maxGenerationTime) {
+          console.log(`清理过期生成任务: ${record.id}, 耗时: ${(currentTime - record.timestamp.getTime()) / 1000}秒`);
+          return {
+            ...record,
+            isGenerating: false,
+            error: '生成超时，请重新尝试'
+          };
+        }
+        return record;
+      });
+      
+      // 检查是否有清理，如果有则保存到localStorage并更新组件状态
+      const hasChanges = updatedRecords.some((record, index) => 
+        record.isGenerating !== currentRecords[index]?.isGenerating || 
+        record.error !== currentRecords[index]?.error
+      );
+      
+      if (hasChanges) {
+        console.log('已清理过期的图像生成任务');
+        saveRecordsToStorage(updatedRecords);
+        setRecords(updatedRecords);
+      }
+    };
+    
+    // 组件挂载时立即检查一次
+    cleanupStaleGenerations();
+    
+    // 每30秒检查一次过期任务
+    const cleanupInterval = setInterval(cleanupStaleGenerations, 30000);
+    
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   // 监听页面刷新，刷新时清空记录
   useEffect(() => {
@@ -160,7 +207,7 @@ export function ImageGenerator() {
     };
   }, []);
 
-  // 监听新建对话事件
+  // 监听新建对话事件和生成状态同步
   useEffect(() => {
     const handleNewSession = () => {
       // 清空记录和localStorage
@@ -184,6 +231,32 @@ export function ImageGenerator() {
       }
       
       toast.success("已开始新的生成对话");
+    };
+
+    // 监听图像生成完成事件 - 从历史记录或其他地方触发
+    const handleImageGenerationComplete = (event: CustomEvent) => {
+      const { taskId, imageUrl, success, error } = event.detail;
+      
+      if (taskId) {
+        // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
+        const currentRecords = loadRecordsFromStorage();
+        const updatedRecords = currentRecords.map(record => {
+          if (record.id === taskId) {
+            console.log(`收到生成完成通知: ${taskId}, 成功: ${success}`);
+            return {
+              ...record,
+              isGenerating: false,
+              imageUrl: success ? imageUrl : undefined,
+              error: success ? undefined : (error || '生成失败')
+            };
+          }
+          return record;
+        });
+        
+        // 保存到localStorage并更新组件状态
+        saveRecordsToStorage(updatedRecords);
+        setRecords(updatedRecords);
+      }
     };
 
     // 监听历史记录编辑事件
@@ -213,10 +286,12 @@ export function ImageGenerator() {
 
     window.addEventListener('newImageSession', handleNewSession);
     window.addEventListener('editImageFromHistory', handleEditFromHistory as EventListener);
+    window.addEventListener('imageGenerationComplete', handleImageGenerationComplete as EventListener);
     
     return () => {
       window.removeEventListener('newImageSession', handleNewSession);
       window.removeEventListener('editImageFromHistory', handleEditFromHistory as EventListener);
+      window.removeEventListener('imageGenerationComplete', handleImageGenerationComplete as EventListener);
     };
   }, []);
 
@@ -245,6 +320,12 @@ export function ImageGenerator() {
         scrollToBottom();
       }, 100);
     }
+  }, [records]);
+
+  // 监听records变化，同步isGenerating状态
+  useEffect(() => {
+    const hasActiveGeneration = records.some(record => record.isGenerating);
+    setIsGenerating(hasActiveGeneration);
   }, [records]);
 
   // 处理单图片选择
@@ -514,12 +595,27 @@ export function ImageGenerator() {
       const imageUrl = data.images?.[0]?.url;
       console.log("提取的图像URL:", imageUrl);
 
-      // 更新记录
-      setRecords(prev => prev.map(record => 
+      // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
+      const currentRecords = loadRecordsFromStorage();
+      const updatedRecords = currentRecords.map(record => 
         record.id === newRecord.id 
           ? { ...record, imageUrl: imageUrl, isGenerating: false }
           : record
-      ));
+      );
+      saveRecordsToStorage(updatedRecords);
+
+      // 更新组件状态（如果组件还存在）
+      setRecords(updatedRecords);
+
+      // 触发生成完成事件通知
+      window.dispatchEvent(new CustomEvent('imageGenerationComplete', {
+        detail: {
+          taskId: newRecord.id,
+          imageUrl: imageUrl,
+          success: true,
+          prompt: newRecord.prompt
+        }
+      }));
 
       // 保存图片到历史记录数据库
       if (imageUrl) {
@@ -581,12 +677,27 @@ export function ImageGenerator() {
     } catch (error) {
       console.error("生成错误:", error);
       
-      // 更新记录为错误状态
-      setRecords(prev => prev.map(record => 
+      // 直接更新localStorage中的记录为错误状态（防止组件卸载时状态丢失）
+      const currentRecords = loadRecordsFromStorage();
+      const updatedRecords = currentRecords.map(record => 
         record.id === newRecord.id 
           ? { ...record, error: error instanceof Error ? error.message : "生成失败", isGenerating: false }
           : record
-      ));
+      );
+      saveRecordsToStorage(updatedRecords);
+
+      // 更新组件状态（如果组件还存在）
+      setRecords(updatedRecords);
+
+      // 触发生成失败事件通知
+      window.dispatchEvent(new CustomEvent('imageGenerationComplete', {
+        detail: {
+          taskId: newRecord.id,
+          success: false,
+          error: error instanceof Error ? error.message : "生成失败",
+          prompt: newRecord.prompt
+        }
+      }));
 
       toast.error(error instanceof Error ? error.message : "生成失败");
     } finally {
