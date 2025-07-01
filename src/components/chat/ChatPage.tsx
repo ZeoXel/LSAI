@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Send, Bot, User, Settings, Zap, ImageIcon, X } from "lucide-react";
+import { Send, Bot, User, Settings, Zap, ImageIcon, X, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -396,200 +396,108 @@ export function ChatPage() {
   const renderMessageContent = (content: string | (TextContent | ImageContent)[]) => {
     if (typeof content === 'string') {
       return (
-        <div className="text-sm prose max-w-none">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeHighlight, rehypeRaw]}
             components={{
-              // 自定义代码块样式
               code: ({ inline, className, children, ...props }: any) => {
                 const match = /language-(\w+)/.exec(className || '');
                 return !inline && match ? (
-                  <pre className="bg-muted rounded-lg p-4 overflow-x-auto">
-                    <code className={className} {...props}>
+                <div className="relative w-full overflow-hidden rounded-md bg-background my-2">
+                  <div className="flex items-center justify-between px-4 py-2 bg-muted/50">
+                    <span className="text-xs font-mono text-muted-foreground">{match[1]}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 hover:bg-muted/80"
+                      onClick={() => {
+                        navigator.clipboard.writeText(children as string);
+                        toast.success('代码已复制');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <pre className="p-4 m-0">
+                      <code className={cn("text-sm whitespace-pre-wrap break-words", match[1])}>
                       {children}
                     </code>
                   </pre>
-                ) : (
-                  <code className="bg-muted px-1.5 py-0.5 rounded text-xs" {...props}>
-                    {children}
-                  </code>
-                );
-              },
-              // 自定义表格样式
-              table: ({ children }) => (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse border border-border">
-                    {children}
-                  </table>
+                  </div>
                 </div>
-              ),
-              th: ({ children }) => (
-                <th className="border border-border bg-muted p-2 text-left font-medium">
+              ) : (
+                <code className={cn("bg-muted/50 px-1.5 py-0.5 rounded-md text-sm font-mono", className)} {...props}>
                   {children}
-                </th>
-              ),
-              td: ({ children }) => (
-                <td className="border border-border p-2">
-                  {children}
-                </td>
-              ),
-              // 自定义链接样式
-              a: ({ children, href }) => (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:text-primary/80 underline"
-                >
-                  {children}
-                </a>
-              ),
-              // 自定义引用样式
-              blockquote: ({ children }) => (
-                <blockquote className="border-l-4 border-primary pl-4 italic text-muted-foreground">
-                  {children}
-                </blockquote>
-              ),
+                </code>
+              );
+            }
             }}
           >
             {content}
           </ReactMarkdown>
-        </div>
       );
     }
 
     return (
-      <div className="space-y-2">
+      <div className="space-y-2 w-full">
         {content.map((item, index) => {
           if (item.type === 'text') {
             return (
-              <div key={index} className="text-sm prose max-w-none">
+              <div key={index} className="w-full break-words">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeHighlight, rehypeRaw]}
                   components={{
-                    // 自定义代码块样式
                     code: ({ inline, className, children, ...props }: any) => {
                       const match = /language-(\w+)/.exec(className || '');
                       return !inline && match ? (
-                        <pre className="bg-muted rounded-lg p-4 overflow-x-auto">
-                          <code className={className} {...props}>
+                        <div className="relative w-full overflow-hidden rounded-md bg-background my-2">
+                          <div className="flex items-center justify-between px-4 py-2 bg-muted/50">
+                            <span className="text-xs font-mono text-muted-foreground">{match[1]}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 hover:bg-muted/80"
+                              onClick={() => {
+                                navigator.clipboard.writeText(children as string);
+                                toast.success('代码已复制');
+                              }}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <pre className="p-4 m-0">
+                              <code className={cn("text-sm whitespace-pre-wrap break-words", match[1])}>
                             {children}
                           </code>
                         </pre>
+                          </div>
+                        </div>
                       ) : (
-                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs" {...props}>
+                        <code className={cn("bg-muted/50 px-1.5 py-0.5 rounded-md text-sm font-mono", className)} {...props}>
                           {children}
                         </code>
                       );
-                    },
-                    // 自定义表格样式
-                    table: ({ children }) => (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full border-collapse border border-border">
-                          {children}
-                        </table>
-                      </div>
-                    ),
-                    th: ({ children }) => (
-                      <th className="border border-border bg-muted p-2 text-left font-medium">
-                        {children}
-                      </th>
-                    ),
-                    td: ({ children }) => (
-                      <td className="border border-border p-2">
-                        {children}
-                      </td>
-                    ),
-                    // 自定义链接样式
-                    a: ({ children, href }) => (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:text-primary/80 underline"
-                      >
-                        {children}
-                      </a>
-                    ),
-                    // 自定义引用样式
-                    blockquote: ({ children }) => (
-                      <blockquote className="border-l-4 border-primary pl-4 italic text-muted-foreground">
-                        {children}
-                      </blockquote>
-                    ),
+                    }
                   }}
                 >
                   {item.text}
                 </ReactMarkdown>
               </div>
             );
-          } else {
+          } else if (item.type === 'image') {
             return (
-              <div key={index} className="space-y-1">
                 <img
+                key={index}
                   src={item.imageUrl}
-                  alt={item.fileName || '上传的图片'}
-                  className="max-w-full max-h-48 rounded-lg object-cover cursor-grab active:cursor-grabbing hover:opacity-80 transition-opacity"
-                  draggable={true}
-                  onClick={async (e) => {
-                    // 只有在没有拖拽的情况下才触发预览
-                    if (!e.defaultPrevented) {
-                      try {
-                        // 将图片转换为Blob格式，以便与历史记录预览保持一致
-                        const response = await fetch(item.imageUrl);
-                        const blob = await response.blob();
-                        
-                        // 创建临时的文件对象
-                        const mockFile = {
-                          id: `chat_${Date.now()}`,
-                          fileName: item.fileName || 'chat-image.png',
-                          blob: blob,
-                          record: {
-                            id: `chat_record_${Date.now()}`,
-                            title: item.fileName || '对话中的图片',
-                            type: 'media' as const,
-                            createdAt: new Date(),
-                            updatedAt: new Date(),
-                            messages: [],
-                            modelName: 'Chat Image',
-                            status: 'completed' as const,
-                            metadata: {
-                              source: 'chat'
-                            },
-                            tags: []
-                          }
-                        };
-                        
-                        // 触发历史记录的预览事件
-                        const previewEvent = new CustomEvent('showImagePreview', {
-                          detail: { file: mockFile }
-                        });
-                        window.dispatchEvent(previewEvent);
-                      } catch (error) {
-                        console.error('预览图片失败:', error);
-                        // 降级方案：直接在新窗口打开图片
-                        window.open(item.imageUrl, '_blank');
-                      }
-                    }
-                  }}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('text/plain', item.imageUrl);
-                    e.dataTransfer.setData('application/json', JSON.stringify({
-                      type: 'chat-image',
-                      imageUrl: item.imageUrl,
-                      fileName: item.fileName
-                    }));
-                  }}
-                  title="点击预览，拖拽到输入框使用此图片"
-                />
-                {item.fileName && (
-                  <p className="text-xs text-muted-foreground">{item.fileName}</p>
-                )}
-              </div>
+                alt={item.fileName || `图片 ${index + 1}`}
+                className="max-w-full h-auto rounded-lg"
+              />
             );
           }
+          return null;
         })}
       </div>
     );
@@ -708,7 +616,7 @@ export function ChatPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
                 className={cn(
-                  "flex gap-3",
+                  "flex gap-3 w-full",
                   message.role === "user" ? "justify-end" : "justify-start"
                 )}
               >
@@ -720,13 +628,15 @@ export function ChatPage() {
                 
                 <div
                   className={cn(
-                    "max-w-3xl rounded-lg px-4 py-2",
+                    "max-w-[calc(100%-4rem)] rounded-lg px-4 py-2 message-bubble overflow-hidden",
                     message.role === "user"
-                      ? "bg-secondary text-foreground border border-border"
-                      : "bg-muted text-foreground"
+                      ? "bg-muted/50 text-foreground"
+                      : "bg-muted/50 text-foreground"
                   )}
                 >
+                  <div className="prose prose-sm dark:prose-invert w-full max-w-none break-words">
                   {renderMessageContent(message.content)}
+                  </div>
                   <div className="text-xs opacity-70 mt-1">
                     {new Date(message.timestamp).toLocaleTimeString([], {
                       hour: "2-digit",
@@ -742,23 +652,17 @@ export function ChatPage() {
                 )}
               </motion.div>
             ))}
-
-            {/* 正在输入指示器 */}
             {isTyping && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex gap-3 justify-start"
+                className="flex gap-3"
               >
                 <div className="flex-shrink-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center">
                   <Bot className="h-4 w-4 text-primary-foreground" />
                 </div>
                 <div className="bg-muted rounded-lg px-4 py-2">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce delay-100" />
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce delay-200" />
-                  </div>
+                  <span className="typing-dots">思考中</span>
                 </div>
               </motion.div>
             )}
@@ -837,79 +741,13 @@ export function ChatPage() {
               <div key={index} className="relative group">
                 <img
                   src={URL.createObjectURL(image)}
-                  alt={`选中的图片 ${index + 1}`}
-                  className="w-16 h-16 object-cover rounded-lg border-2 border-border"
+                  alt={`图片 ${index + 1}`}
+                  className="max-w-full h-auto rounded-lg"
                 />
-                <Button
-                  size="icon"
-                  variant="destructive"
-                  className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => removeImage(index)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-                <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 rounded-b-lg truncate">
-                  {image.name}
-                </div>
               </div>
             ))}
           </div>
         )}
-
-        {/* 输入区域 */}
-        <div 
-          className={cn(
-            "relative transition-all duration-200",
-            isDragOver && "ring-2 ring-primary/50 bg-primary/5"
-          )}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={handleImageSelect}
-          />
-          
-          <textarea
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={isDragOver ? "松开鼠标添加图片..." : "输入您的问题或拖拽图片进行分析... (Enter发送，Shift+Enter换行)"}
-            className={cn(
-              "w-full min-h-16 max-h-32 p-3 pr-20 text-sm bg-background border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-200",
-              isDragOver && "border-primary/50 bg-primary/5"
-            )}
-            disabled={isTyping}
-          />
-          
-          {/* 右下角按钮组 */}
-          <div className="absolute right-2 bottom-2 flex gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isTyping || selectedImages.length >= 4}
-              className="h-8 w-8 hover:bg-muted"
-            >
-              <ImageIcon className="h-4 w-4" />
-            </Button>
-            
-            <Button
-              onClick={handleSendMessage}
-              disabled={(!inputValue.trim() && selectedImages.length === 0) || isTyping}
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 hover:bg-muted"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
       </div>
     </div>
   );

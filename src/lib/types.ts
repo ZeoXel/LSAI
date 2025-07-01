@@ -22,29 +22,32 @@ export interface ChatMessage {
 // 历史记录类型定义
 export interface HistoryRecord {
   id: string;
-  type: 'text' | 'media'; // 只分为文字和媒体两类
+  type: 'text' | 'media' | 'chat';
   title: string;
-  messages: ChatMessage[]; // 完整的对话记录
   modelName: string;
-  status: 'active' | 'completed' | 'archived';
-  metadata: Record<string, any>;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
   tags: string[];
-  createdAt: Date;
-  updatedAt: Date;
+  content?: any;
+  messages: ChatMessage[];
+  metadata?: any; // 存储生成相关的元数据
 }
 
 // 媒体文件类型
 export interface MediaFile {
   id: string;
   historyId: string;
-  blob: Blob;
   fileName: string;
   mimeType: string;
   size: number;
-  thumbnailBlob?: Blob;
-  width?: number;
-  height?: number;
-  duration?: number; // 视频时长(秒)
+  url: string;
+  thumbnailUrl?: string;
+  createdAt: string;
+  blob?: Blob; // 文件数据
+  thumbnailBlob?: Blob; // 缩略图数据
+  width?: number; // 图片宽度
+  height?: number; // 图片高度
 }
 
 // 标签类型
@@ -57,21 +60,20 @@ export interface Tag {
 
 // 列表查询选项
 export interface ListOptions {
+  type?: 'text' | 'media' | 'chat';
+  tags?: string[];
+  search?: string;
   page?: number;
   limit?: number;
-  search?: string;
-  type?: HistoryRecord['type'];
-  tags?: string[];
-  sortBy?: 'createdAt' | 'updatedAt' | 'title';
-  sortOrder?: 'asc' | 'desc';
+  offset?: number;
 }
 
 // 列表响应类型
 export interface ListResponse<T> {
   items: T[];
   total: number;
-  page: number;
-  totalPages: number;
+  page?: number;
+  totalPages?: number;
 }
 
 // 存储服务接口

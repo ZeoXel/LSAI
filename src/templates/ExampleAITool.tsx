@@ -324,7 +324,7 @@ export function ExampleAITool() {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="输入内容进行处理..."
-            className="flex-1 min-h-[40px] max-h-[120px] px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            className="flex-1 min-h-10 max-h-32 px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             disabled={isProcessing}
           />
           <Button

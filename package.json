@@ -8,18 +8,16 @@
     "start": "next start",
     "lint": "next lint",
     "check-styles": "node scripts/check-styles.js",
-    "fix-styles": "node scripts/fix-styles.js",
     "setup-agents": "node scripts/setup-agents.js",
     "style-enforce": "node scripts/style-enforcer.js",
     "style-enforce-fix": "node scripts/style-enforcer.js --fix",
     "precommit": "npm run style-enforce && npm run check-styles && npm run lint",
-    "style-cleanup": "npm run fix-styles && npm run check-styles",
+    "style-cleanup": "npm run check-styles",
     "prepare": "husky",
     "pre-commit": "lint-staged"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
-      "bun run fix-styles",
       "bun run check-styles"
     ],
     "*.{css,scss}": [
@@ -33,6 +31,7 @@
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.2.7",
+    "@supabase/supabase-js": "^2.50.2",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/react-query": "^5.81.2",
     "axios": "^1.10.0",
@@ -40,6 +39,7 @@
     "clsx": "^2.1.1",
     "dexie": "^4.0.8",
     "framer-motion": "^12.18.1",
+    "glob": "^11.0.3",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.522.0",
     "next": "15.3.4",

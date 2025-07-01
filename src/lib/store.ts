@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { createContext, useContext } from 'react';
+import { StorageService } from './types';
 
 interface AppState {
   // 侧边栏状态
@@ -53,4 +55,14 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({ 
       currentFiles: state.currentFiles.filter(f => f !== file) 
     })),
-})); 
+}));
+
+export const StorageContext = createContext<StorageService | null>(null);
+
+export function useStorage() {
+  const context = useContext(StorageContext);
+  if (!context) {
+    throw new Error('useStorage must be used within a StorageProvider');
+  }
+  return context;
+} 

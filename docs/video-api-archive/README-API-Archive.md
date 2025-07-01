@@ -31,10 +31,10 @@ const response = await fetch('/api/video/generate', {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     prompt: '一只可爱的小猫在阳光下玩耍',
-    model: 'kling-v1',
-    duration: 5,
-    mode: 'std',
-    aspect_ratio: '16:9'
+            model: 'kling-v1',
+            duration: 5,
+            mode: 'std',
+            aspect_ratio: '16:9'
   })
 });
 
@@ -44,10 +44,10 @@ const response = await fetch('/api/video/generate', {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     prompt: '让图片中的场景动起来',
-    model: 'kling-v1',
+            model: 'kling-v1',
     image: 'base64_image_data',
-    duration: 5,
-    mode: 'std'
+            duration: 5,
+            mode: 'std'
   })
 });
 
@@ -59,10 +59,10 @@ const response = await fetch('/api/video/generate', {
     prompt: '基于这些图片创建动态视频',
     model: 'kling-v1-6',
     image_list: [
-      { image: 'base64_image_1' },
+            { image: 'base64_image_1' },
       { image: 'base64_image_2' }
     ],
-    duration: '5',
+            duration: '5',
     mode: 'std'
   })
 });

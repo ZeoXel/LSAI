@@ -210,6 +210,10 @@ function ImagePreviewModal({
 
   const handleDownload = () => {
     try {
+      if (!file.blob) {
+        console.error('文件数据不可用');
+        return;
+      }
       const url = URL.createObjectURL(file.blob);
       const a = document.createElement('a');
       a.href = url;
@@ -262,13 +266,13 @@ function ImagePreviewModal({
 
             {/* 媒体内容 */}
             <div className="relative">
-              {file.mimeType?.startsWith('image/') ? (
+              {file.mimeType?.startsWith('image/') && file.blob ? (
               <img
                 src={URL.createObjectURL(file.blob)}
                 alt={file.record.title}
                 className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
               />
-              ) : file.mimeType?.startsWith('video/') ? (
+              ) : file.mimeType?.startsWith('video/') && file.blob ? (
                 <video
                   src={URL.createObjectURL(file.blob)}
                   controls
@@ -309,28 +313,28 @@ function ImagePreviewModal({
                 {/* 信息容器 - 带自适应背景 */}
                 <div className="bg-black/60 backdrop-blur-sm rounded-lg p-3 space-y-2">
                   <h3 className="text-white text-lg font-medium truncate">
-                    {file.record.title}
-                  </h3>
-                  
+                  {file.record.title}
+                </h3>
+                
                   {/* 信息行 */}
-                  <div className="space-y-1">
+                <div className="space-y-1">
                     <div className="flex items-center gap-2 text-white/90 text-sm">
                       <span className="bg-white/20 backdrop-blur-sm px-2 py-1 rounded text-xs">
-                        {file.record.modelName}
-                      </span>
-                      <span>
-                        {new Date(file.record.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    
+                      {file.record.modelName}
+                    </span>
+                    <span>
+                      {new Date(file.record.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  
                     <div className="flex items-center gap-2 text-white/80 text-xs">
-                      <span className="truncate">{file.fileName}</span>
+                    <span className="truncate">{file.fileName}</span>
                       {file.mimeType?.startsWith('image/') && file.width && file.height && (
-                        <>
-                          <span>•</span>
-                          <span>{file.width} × {file.height}</span>
-                        </>
-                      )}
+                      <>
+                        <span>•</span>
+                        <span>{file.width} × {file.height}</span>
+                      </>
+                    )}
                       {file.mimeType?.startsWith('video/') && file.record.metadata?.videoDuration && (
                         <>
                           <span>•</span>
@@ -343,13 +347,13 @@ function ImagePreviewModal({
                           <span>{file.record.metadata.videoResolution}</span>
                         </>
                       )}
-                    </div>
-                    
-                    {file.record.metadata?.originalPrompt && (
+                  </div>
+                  
+                  {file.record.metadata?.originalPrompt && (
                       <p className="text-white/70 text-xs mt-2 line-clamp-2">
-                        "{file.record.metadata.originalPrompt}"
-                      </p>
-                    )}
+                      "{file.record.metadata.originalPrompt}"
+                    </p>
+                  )}
                   </div>
                 </div>
               </div>
@@ -508,6 +512,10 @@ function MediaGrid() {
   // 下载图片
   const handleDownload = async (file: MediaFile) => {
     try {
+      if (!file.blob) {
+        console.error('文件数据不可用');
+        return;
+      }
       const url = URL.createObjectURL(file.blob);
       const a = document.createElement('a');
       a.href = url;
@@ -621,7 +629,7 @@ function MediaGrid() {
             className="relative group aspect-square bg-muted rounded-lg overflow-hidden"
           >
             {/* 媒体内容 - 智能显示图片和视频缩略图 */}
-            {file.mimeType?.startsWith('image/') ? (
+            {file.mimeType?.startsWith('image/') && file.blob ? (
             <img
               src={URL.createObjectURL(file.blob)}
               alt={file.record.title}
@@ -682,7 +690,7 @@ function MediaGrid() {
                   />
                 ) : (
                   // 降级方案：显示视频第一帧
-                  <video
+                  file.blob && <video
                     src={URL.createObjectURL(file.blob)}
                     className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-200"
                     preload="metadata"

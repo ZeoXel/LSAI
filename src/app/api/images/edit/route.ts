@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     apiFormData.append('prompt', prompt.trim());
     
     // 添加所有图片文件
-    imageFiles.forEach((file, index) => {
+    imageFiles.forEach((file) => {
       apiFormData.append('image', file);
     });
 
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       try {
         const errorData = await response.json();
         errorMessage = errorData.error || errorMessage;
-      } catch (parseError) {
+      } catch {
         errorMessage = `HTTP ${response.status}: ${response.statusText}`;
       }
       throw new Error(errorMessage);
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         dataLength: data.data?.length || 0,
         firstItemKeys: data.data?.[0] ? Object.keys(data.data[0]) : []
       });
-    } catch (parseError) {
+    } catch {
       throw new Error('服务器响应格式错误');
     }
 

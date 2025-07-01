@@ -8,24 +8,24 @@ const client = new OpenAI({
   baseURL: "https://www.dmxapi.cn/v1/" // DMXAPI的base URL
 });
 
-// 消息内容类型
-interface TextContent {
-  type: 'text';
-  text: string;
-}
+// 消息内容类型 (暂时未使用)
+// interface TextContent {
+//   type: 'text';
+//   text: string;
+// }
 
-interface ImageContent {
-  type: 'image_url';
-  image_url: {
-    url: string; // base64 data URL
-  };
-}
+// interface ImageContent {
+//   type: 'image_url';
+//   image_url: {
+//     url: string; // base64 data URL
+//   };
+// }
 
-// 聊天消息接口 - 支持OpenAI格式
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string | (TextContent | ImageContent)[];
-}
+// 聊天消息接口 - 支持OpenAI格式 (暂时未使用)
+// interface ChatMessage {
+//   role: 'user' | 'assistant' | 'system';
+//   content: string | (TextContent | ImageContent)[];
+// }
 
 // 请求体接口
 interface ChatRequest {

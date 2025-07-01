@@ -6,6 +6,8 @@ import { useState, useEffect } from "react";
 import { initializeDatabase, deleteDatabase } from "@/lib/database";
 import { Toaster } from "sonner";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
+import { StorageContext } from '@/lib/store';
+import { SupabaseStorageService } from '@/lib/supabase-storage';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -72,20 +74,22 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {dbError && (
-        <div className="fixed top-4 right-4 z-50 max-w-sm bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg">
-          <div className="flex items-center justify-between">
-            <p className="text-sm">{dbError}</p>
-            <button
-              onClick={handleClearDatabase}
-              className="ml-2 text-xs bg-destructive/20 hover:bg-destructive/30 px-2 py-1 rounded"
-            >
-              清理数据库
-            </button>
+      <StorageContext.Provider value={new SupabaseStorageService()}>
+        {dbError && (
+          <div className="fixed top-4 right-4 z-50 max-w-sm bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm">{dbError}</p>
+              <button
+                onClick={handleClearDatabase}
+                className="ml-2 text-xs bg-destructive/20 hover:bg-destructive/30 px-2 py-1 rounded"
+              >
+                清理数据库
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-      {children}
+        )}
+        {children}
+      </StorageContext.Provider>
       <Toaster position="bottom-right" richColors />
       <ConfirmDialogComponent />
     </QueryClientProvider>

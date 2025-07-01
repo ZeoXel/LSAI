@@ -260,3 +260,87 @@
     margin: 2em 0;
   }
 }
+
+/* 聊天消息样式 */
+.chat-message-container {
+  @apply w-full max-w-[calc(100vw-16rem)] mx-auto;
+}
+
+.chat-message {
+  @apply break-words whitespace-pre-wrap;
+  max-width: 100%;
+}
+
+.chat-message pre {
+  @apply my-2;
+  max-width: 100%;
+}
+
+.chat-message code {
+  @apply font-mono text-sm;
+}
+
+/* 确保代码块不会导致布局溢出 */
+.prose pre {
+  margin: 0 !important;
+  padding: 0 !important;
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  max-width: 100% !important;
+}
+
+.prose pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 行内代码样式 */
+.prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 消息气泡样式 */
+.message-bubble {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.message-bubble pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.message-bubble .prose {
+  max-width: 100% !important;
+}
+
+.message-bubble .prose > * {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* 打字动画 */
+.typing-dots:after {
+  content: '...';
+  animation: typing 1.5s infinite;
+  display: inline-block;
+  width: 1.5em;
+}
+
+@keyframes typing {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}

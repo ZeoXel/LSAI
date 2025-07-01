@@ -18,7 +18,6 @@ import { cn } from "@/lib/utils";
 import { localStorageService } from "@/lib/local-storage";
 import { toast } from 'sonner';
 import { PromptOptimizer } from "@/components/ai/PromptOptimizer";
-// import { VideoAssistant } from './VideoAssistant';
 
 // 可灵视频生成模型配置 - 基于真实API
 const VIDEO_MODELS = [
@@ -605,16 +604,6 @@ export function VideoGenerator() {
             messages: [],
             modelName: VIDEO_MODELS.find(m => m.id === selectedModel)?.name || selectedModel,
             status: 'completed',
-            metadata: {
-              generationModel: selectedModel,
-              videoDuration: data.duration,
-              videoResolution: data.resolution,
-              originalPrompt: newRecord.prompt,
-              task_id: data.metadata?.task_id,
-              hasImages: selectedImage ? true : false,
-              fileType: 'video',
-              videoUrl: data.videoUrl // 保存原始URL用于预览
-            },
             tags: ['AI生成', '视频']
           });
           
@@ -640,7 +629,7 @@ export function VideoGenerator() {
         }
       }
 
-      // 清理选中的图片和运镜设置
+      // 清理选中的图片
       if (selectedImage) {
         setSelectedImage(null);
         if (fileInputRef.current) {
@@ -1351,31 +1340,6 @@ export function VideoGenerator() {
           autoRun={true}
         />
       )}
-
-
-
-      {/* 运镜助手对话框 - 暂时注释掉 */}
-      {/* {showVideoAssistant && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-background rounded-lg border border-border max-w-4xl w-full max-h-[90vh] overflow-hidden">
-            <div className="p-6 border-b border-border">
-              <h2 className="text-xl font-semibold text-foreground">
-                🎬 AI视频运镜助手
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                AI将分析您的视频描述，推荐合适的运镜方式并优化prompt
-              </p>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-              <VideoAssistant
-                userPrompt={assistantPrompt}
-                onApplyPreset={handleApplyPreset}
-                onClose={handleCloseAssistant}
-              />
-            </div>
-          </div>
-        </div>
-      )} */}
     </div>
   );
 } 
