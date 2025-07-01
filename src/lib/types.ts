@@ -55,7 +55,7 @@ export interface Tag {
   id: string;
   name: string;
   color: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
 // 列表查询选项

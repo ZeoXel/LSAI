@@ -58,7 +58,7 @@ export class LocalStorageService implements StorageService {
   async updateRecord(id: string, updates: Partial<HistoryRecord>): Promise<void> {
     await db.historyRecords.update(id, {
       ...updates,
-      updatedAt: new Date()
+      updatedAt: new Date().toISOString()
     });
   }
 
@@ -162,6 +162,8 @@ export class LocalStorageService implements StorageService {
       fileName: file.name,
       mimeType: file.type,
       size: file.size,
+      url: URL.createObjectURL(file),
+      createdAt: new Date().toISOString(),
       thumbnailBlob
     };
 
@@ -209,7 +211,7 @@ export class LocalStorageService implements StorageService {
     const newTag: Tag = {
       ...tag,
       id: generateId(),
-      createdAt: new Date()
+      createdAt: new Date().toISOString()
     };
     
     await db.tags.add(newTag);
@@ -246,8 +248,8 @@ export class LocalStorageService implements StorageService {
       status: 'active',
       metadata: {},
       tags: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     await db.historyRecords.add(conversation);
@@ -265,7 +267,7 @@ export class LocalStorageService implements StorageService {
     }
 
     conversation.messages.push(message);
-    conversation.updatedAt = new Date();
+    conversation.updatedAt = new Date().toISOString();
 
     await db.historyRecords.put(conversation);
   }
@@ -309,7 +311,7 @@ export class LocalStorageService implements StorageService {
     const filesWithBase64 = await Promise.all(
       files.map(async (file) => ({
         ...file,
-        blob: await this.blobToBase64(file.blob),
+        blob: file.blob ? await this.blobToBase64(file.blob) : '',
         thumbnailBlob: file.thumbnailBlob ? await this.blobToBase64(file.thumbnailBlob) : undefined
       }))
     );

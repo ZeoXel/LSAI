@@ -43,10 +43,10 @@ export const initializeDatabase = async () => {
     if (tagCount === 0) {
       // 创建默认标签
       const defaultTags = [
-        { id: 'tag-1', name: '对话', color: '#3b82f6', createdAt: new Date() },
-        { id: 'tag-2', name: '媒体', color: '#10b981', createdAt: new Date() },
-        { id: 'tag-3', name: '重要', color: '#ef4444', createdAt: new Date() },
-        { id: 'tag-4', name: '草稿', color: '#6b7280', createdAt: new Date() },
+        { id: 'tag-1', name: '对话', color: '#3b82f6', createdAt: new Date().toISOString() },
+        { id: 'tag-2', name: '媒体', color: '#10b981', createdAt: new Date().toISOString() },
+        { id: 'tag-3', name: '重要', color: '#ef4444', createdAt: new Date().toISOString() },
+        { id: 'tag-4', name: '草稿', color: '#6b7280', createdAt: new Date().toISOString() },
       ];
       
       await db.tags.bulkAdd(defaultTags);
@@ -72,10 +72,10 @@ export const initializeDatabase = async () => {
         await db.open();
         
                  const defaultTags = [
-           { id: 'tag-1', name: '对话', color: '#3b82f6', createdAt: new Date() },
-           { id: 'tag-2', name: '媒体', color: '#10b981', createdAt: new Date() },
-           { id: 'tag-3', name: '重要', color: '#ef4444', createdAt: new Date() },
-           { id: 'tag-4', name: '草稿', color: '#6b7280', createdAt: new Date() },
+           { id: 'tag-1', name: '对话', color: '#3b82f6', createdAt: new Date().toISOString() },
+           { id: 'tag-2', name: '媒体', color: '#10b981', createdAt: new Date().toISOString() },
+           { id: 'tag-3', name: '重要', color: '#ef4444', createdAt: new Date().toISOString() },
+           { id: 'tag-4', name: '草稿', color: '#6b7280', createdAt: new Date().toISOString() },
          ];
         
         await db.tags.bulkAdd(defaultTags);
