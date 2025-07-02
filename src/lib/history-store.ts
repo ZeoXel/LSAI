@@ -308,10 +308,10 @@ export const useHistoryStore = create<HistoryState>()(
         });
         get().loadRecords();
       }
-    };
-  },
-  {
+      };
+    },
+    {
     name: 'history-store'
-  }
-)
+    }
+  )
 ); 

@@ -31,11 +31,11 @@ export const useConversationStore = create<ConversationState>()(
         
         try {
           // 🔧 简化逻辑：只更新对话ID，消息内容由ChatPage处理
-          set({
+            set({
             currentConversation: { id: conversationId } as HistoryRecord,
             messages: [], // 让ChatPage来设置具体消息
-            isLoading: false
-          });
+              isLoading: false
+            });
         } catch (error) {
           console.error('加载对话失败:', error);
           set({ isLoading: false });
@@ -66,10 +66,10 @@ export const useConversationStore = create<ConversationState>()(
       // 🔧 创建新对话 - 简化版本，主要存储逻辑由ChatPage处理
       createNewConversation: async (title: string, modelName: string) => {
         // 🔧 只清空状态，让ChatPage控制何时显示问候语
-        set({
+          set({
           currentConversation: null,
           messages: []
-        });
+          });
       }
     }),
     {

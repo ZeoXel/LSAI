@@ -80,7 +80,7 @@ export class SupabaseStorageService implements StorageService {
     }
   }
   
-    // 历史记录管理
+  // 历史记录管理
   async createRecord(record: Omit<HistoryRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<HistoryRecord> {
     const now = new Date().toISOString();
     
@@ -283,14 +283,14 @@ export class SupabaseStorageService implements StorageService {
         .select('url')
         .eq('id', id)
         .single();
-      
+    
       // 如果文件存在，从Storage删除
       if (!getError && file?.url) {
-        const fileName = file.url.split('/').pop();
-        if (fileName) {
-          await supabase.storage
-            .from('media')
-            .remove([`uploads/${fileName}`]);
+    const fileName = file.url.split('/').pop();
+    if (fileName) {
+      await supabase.storage
+        .from('media')
+        .remove([`uploads/${fileName}`]);
         }
       }
     } catch (storageError) {

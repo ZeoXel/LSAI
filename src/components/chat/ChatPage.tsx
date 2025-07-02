@@ -109,7 +109,7 @@ export function ChatPage() {
     if (messages.length > 0) {
       // 🔧 延迟滚动，让消息先完全渲染，避免加载历史对话时的闪烁
       const timeoutId = setTimeout(() => {
-        scrollToBottom();
+      scrollToBottom();
       }, 100);
       
       return () => clearTimeout(timeoutId);
@@ -390,7 +390,7 @@ export function ChatPage() {
       };
 
       addMessage(aiResponse);
-      
+
       // 立即隐藏"思考中"气泡
       setIsTyping(false);
 

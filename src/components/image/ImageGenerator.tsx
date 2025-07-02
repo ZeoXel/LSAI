@@ -605,7 +605,7 @@ export function ImageGenerator() {
 
       const imageUrl = data.images[0]?.url;
       console.log("🖼️ 提取的图像URL:", imageUrl);
-      
+
       if (!imageUrl) {
         console.error("❌ 第一个图像对象中没有URL字段");
         console.log("🔍 第一个图像对象:", data.images[0]);
