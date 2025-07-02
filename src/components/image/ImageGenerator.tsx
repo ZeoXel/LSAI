@@ -576,7 +576,6 @@ export function ImageGenerator() {
 
     setRecords(prev => [...prev, newRecord]);
     setPrompt("");
-    setIsGenerating(true);
 
     try {
       let response;
@@ -747,7 +746,6 @@ export function ImageGenerator() {
 
       toast.error(error instanceof Error ? error.message : "生成失败");
     } finally {
-      setIsGenerating(false);
     }
   };
 
@@ -1231,13 +1229,13 @@ export function ImageGenerator() {
                         ? "描述您想要对上一张图片进行的进一步修改..."
                         : "描述您想要对图片进行的编辑..."
                       : "请先上传图片或拖拽图片进行编辑"
-                    : "描述您想要生成的图像或拖拽图片进行参考... (Enter生成，Shift+Enter换行)"
+                    : records.some(r => r.isGenerating) ? "⏳ 后台生成中，可继续输入下一个任务... (Enter生成，Shift+Enter换行)" : "描述您想要生成的图像或拖拽图片进行参考... (Enter生成，Shift+Enter换行)"
             }
             className={cn(
               "w-full min-h-16 max-h-32 p-3 pr-20 text-sm bg-background border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-200",
               isDragOver && "border-primary/50 bg-primary/5"
             )}
-            disabled={isGenerating}
+            
           />
           
           {/* 右下角按钮组 */}
@@ -1247,7 +1245,7 @@ export function ImageGenerator() {
               variant="ghost"
               size="icon"
               onClick={handleShowPromptOptimizer}
-              disabled={isGenerating || !prompt.trim()}
+              disabled={!prompt.trim()}
               className="h-8 w-8 hover:bg-muted"
               title="AI提示词优化 - 自动按照专业格式优化提示词"
             >
@@ -1260,7 +1258,7 @@ export function ImageGenerator() {
                 variant="ghost"
                 size="icon"
                 onClick={() => multiFileInputRef.current?.click()}
-                disabled={isGenerating}
+                
                 className="h-8 w-8 hover:bg-muted"
                 title="上传多张图片进行合并"
               >
@@ -1276,7 +1274,7 @@ export function ImageGenerator() {
                 variant="ghost"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isGenerating}
+                
                 className="h-8 w-8 hover:bg-muted"
                 title="上传参考图片"
               >
@@ -1289,14 +1287,18 @@ export function ImageGenerator() {
               onClick={handleGenerate}
               disabled={
                 !prompt.trim() || 
-                isGenerating || 
+                (records.filter(r => r.isGenerating).length >= 3) || 
                 (selectedModel === "gpt-image-1" && !selectedImage && selectedImages.length === 0) ||
                 (supportsMultipleImages() && selectedImages.length === 0 && !selectedImage)
               }
               variant="ghost"
               size="icon"
               className="h-8 w-8 hover:bg-muted"
-            >
+              title={
+                records.filter(r => r.isGenerating).length >= 3 
+                  ? "最多同时进行3个生成任务，请等待完成后再试"
+                  : "发送生成请求"
+              }            >
               <Send className="h-4 w-4" />
             </Button>
           </div>
