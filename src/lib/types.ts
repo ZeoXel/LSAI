@@ -60,7 +60,7 @@ export interface Tag {
 
 // 列表查询选项
 export interface ListOptions {
-  type?: 'text' | 'media' | 'chat';
+  type?: 'text' | 'media' | 'chat' | 'workflow';
   tags?: string[];
   search?: string;
   page?: number;
