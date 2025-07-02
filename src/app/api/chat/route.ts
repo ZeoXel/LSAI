@@ -46,6 +46,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 记录请求数据用于调试
+    console.log('Chat API 请求数据:', {
+      model: model || 'gpt-4o',
+      messages: JSON.stringify(messages, null, 2),
+      messagesCount: messages.length
+    });
+
     // 调用OpenAI API - 使用gpt-4o处理图片
     const completion = await client.chat.completions.create({
       model: model || 'gpt-4o',
@@ -80,7 +87,14 @@ export async function POST(request: NextRequest) {
     console.error('Chat API error:', error);
     
     // 处理不同类型的错误
-    const errorObj = error as { code?: string; message?: string };
+    const errorObj = error as { code?: string; message?: string; response?: any };
+    
+    // 记录详细错误信息
+    console.error('详细错误信息:', {
+      code: errorObj.code,
+      message: errorObj.message,
+      response: errorObj.response?.data || errorObj.response
+    });
     
     if (errorObj.code === 'insufficient_quota') {
       return NextResponse.json(

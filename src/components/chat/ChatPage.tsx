@@ -19,12 +19,17 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import 'highlight.js/styles/github-dark.css';
+import { workflowEngine } from '@/lib/workflow-engine';
+import { WORKFLOW_TEMPLATES, getWorkflowTemplate } from '@/lib/workflow-templates';
+import { WorkflowExecution, WorkflowStep } from '@/lib/workflow-types';
 
 interface AIModel {
   id: string;
   name: string;
   description: string;
   icon: string;
+  type?: 'ai' | 'workflow';
+  category?: string;
 }
 
 const AI_MODELS: AIModel[] = [
@@ -33,25 +38,38 @@ const AI_MODELS: AIModel[] = [
     name: "GPT-4o",
     description: "最强大的多模态模型",
     icon: "🧠",
+    type: "ai"
   },
   {
     id: "gpt-4o-mini",
     name: "GPT-4o Mini",
     description: "快速响应，经济实惠",
     icon: "⚡",
+    type: "ai"
   },
   {
     id: "claude-3.5",
     name: "Claude 3.5 Sonnet",
     description: "优秀的代码和分析能力",
     icon: "🔮",
+    type: "ai"
   },
   {
     id: "gemini-pro",
     name: "Gemini Pro",
     description: "Google的多模态AI",
     icon: "💎",
+    type: "ai"
   },
+  // 工作流选项
+  ...WORKFLOW_TEMPLATES.map(template => ({
+    id: template.id,
+    name: template.name,
+    description: template.description,
+    icon: template.icon,
+    type: "workflow" as const,
+    category: template.category
+  }))
 ];
 
 export function ChatPage() {
@@ -63,6 +81,11 @@ export function ChatPage() {
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 工作流相关状态
+  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowExecution | null>(null);
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStep | null>(null);
+  const [isWorkflowMode, setIsWorkflowMode] = useState(false);
   
   // 滚动控制
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -231,26 +254,247 @@ export function ChatPage() {
     };
   }, []);
 
+  // 监听工作流完成事件
+  useEffect(() => {
+    const handleWorkflowCompleted = (event: CustomEvent) => {
+      const { executionId, result } = event.detail;
+      
+      if (currentWorkflow && currentWorkflow.id === executionId) {
+        // 显示工作流结果
+        const resultMessage: ChatMessage = {
+          id: `workflow_result_${Date.now()}`,
+          role: "assistant",
+          content: result.content,
+          timestamp: Date.now(),
+        };
+        
+        addMessage(resultMessage);
+        
+        // 显示完成消息
+        const completionMessage: ChatMessage = {
+          id: `workflow_completed_${Date.now()}`,
+          role: "assistant",
+          content: "🎉 工作流执行完成！如需开始新的工作流，请重新选择模型。",
+          timestamp: Date.now(),
+        };
+        
+        setTimeout(() => {
+          addMessage(completionMessage);
+          
+          // 🔧 工作流完成 - 统一保存所有消息到历史记录
+          const saveCompleteWorkflow = async () => {
+            try {
+              // 获取工作流模板和第一个用户输入作为标题
+              const template = getWorkflowTemplate(currentWorkflow?.templateId || '');
+              const workflowTitle = currentWorkflow?.metadata?.title || (template ? `工作流：${template.name}` : '工作流');
+              
+              // 创建工作流对话记录
+              const newConversation = await storageService.createRecord({
+                title: workflowTitle,
+                modelName: selectedModel,
+                type: 'text',
+                status: 'active',
+                tags: [],
+                content: { messages: [] },
+                messages: [],
+                metadata: { 
+                  workflowId: currentWorkflow?.templateId || '',
+                  executionId: currentWorkflow?.id || ''
+                }
+              });
+              
+              // 保存所有消息（包括欢迎、步骤、用户输入、处理、结果、完成消息）
+              for (const message of messages.concat([resultMessage, completionMessage])) {
+                await storageService.addMessageToConversation(newConversation.id, message);
+              }
+              
+              console.log('✅ 工作流完整记录已保存:', { 
+                id: newConversation.id, 
+                title: workflowTitle,
+                messageCount: messages.length + 2 
+              });
+              
+              // 触发历史记录刷新
+              loadRecords();
+            } catch (saveError) {
+              console.error('❌ 保存完整工作流失败:', saveError);
+            }
+          };
+          
+          saveCompleteWorkflow();
+        }, 1000);
+        
+        // 重置工作流状态
+        setCurrentWorkflow(null);
+        setWorkflowStep(null);
+        setIsWorkflowMode(false);
+        
+        toast.success('工作流执行完成！');
+      }
+    };
+
+    window.addEventListener('workflowCompleted', handleWorkflowCompleted as any);
+    
+    return () => {
+      window.removeEventListener('workflowCompleted', handleWorkflowCompleted as any);
+    };
+  }, [currentWorkflow, addMessage]);
+
+  // 启动工作流
+  const handleWorkflowStart = async (workflowId: string) => {
+    try {
+      // 创建新对话（但不显示问候语）
+      await handleNewConversation(true); // 传入参数表示是工作流模式
+      
+      // 创建工作流执行实例
+      const execution = workflowEngine.createExecution(workflowId);
+      if (!execution) {
+        toast.error('无法启动工作流');
+        return;
+      }
+      
+      // 启动工作流
+      const startedExecution = workflowEngine.startExecution(execution.id);
+      if (!startedExecution) {
+        toast.error('工作流启动失败');
+        return;
+      }
+      
+      setCurrentWorkflow(startedExecution);
+      setIsWorkflowMode(true);
+      
+      // 获取工作流模板
+      const template = getWorkflowTemplate(workflowId);
+      if (!template) return;
+      
+      // 添加工作流欢迎消息
+      const welcomeMessage: ChatMessage = {
+        id: `workflow_welcome_${Date.now()}`,
+        role: "assistant",
+        content: `🔄 **${template.name}** 工作流已启动！\n\n${template.description}\n\n📋 **流程概览**：共 ${template.steps.length} 个步骤\n⏱️ **预估时间**：${template.estimatedTime}\n\n让我们开始第一步：`,
+        timestamp: Date.now(),
+      };
+      
+      addMessage(welcomeMessage);
+      
+      // 🔧 工作流不立即保存，等执行完成后统一保存
+      // 清空当前会话ID，因为工作流不会立即保存
+      setCurrentSessionConversationId(null);
+      console.log('✅ 工作流已启动，等待执行完成后统一保存');
+      
+      // 获取第一步并显示提示
+      const firstStep = workflowEngine.getCurrentStep(execution.id);
+      if (firstStep) {
+        setWorkflowStep(firstStep);
+        await showWorkflowStepPrompt(firstStep, 1, template.steps.length);
+      }
+      
+    } catch (error) {
+      console.error('启动工作流失败:', error);
+      toast.error('启动工作流失败');
+    }
+  };
+
+  // 显示工作流步骤提示
+  const showWorkflowStepPrompt = async (step: WorkflowStep, current: number, total: number) => {
+    const stepMessage: ChatMessage = {
+      id: `workflow_step_${step.id}_${Date.now()}`,
+      role: "assistant",
+      content: `**步骤 ${current}/${total}：${step.name}**\n\n${step.prompt}${step.required ? ' (必填)' : ' (可选)'}`,
+      timestamp: Date.now(),
+    };
+    
+    addMessage(stepMessage);
+    // 🔧 工作流中间步骤不保存，等执行完成后统一保存
+  };
+
+  // 处理工作流输入
+  const handleWorkflowInput = async (input: string) => {
+    if (!currentWorkflow || !workflowStep) return;
+
+    try {
+      // 提交步骤输入
+      const updatedExecution = workflowEngine.submitStepInput(currentWorkflow.id, input);
+      if (!updatedExecution) {
+        toast.error('提交失败');
+        return;
+      }
+
+      setCurrentWorkflow(updatedExecution);
+
+      // 🔧 工作流中间步骤不保存，只记录第一个输入作为标题用
+      console.log('🔍 工作流步骤信息:', {
+        currentStep: updatedExecution.currentStep,
+        totalSteps: updatedExecution.totalSteps,
+        input: input,
+        status: updatedExecution.status
+      });
+      
+      // 记录第一个用户输入作为将来的标题
+      if (updatedExecution.currentStep === 1) {
+        const potentialTitle = input.length > 30 ? input.substring(0, 30) + '...' : input;
+        // 存储到工作流执行的metadata中，工作流完成时使用
+        if (currentWorkflow) {
+          currentWorkflow.metadata = { 
+            ...currentWorkflow.metadata, 
+            title: potentialTitle 
+          };
+        }
+        console.log('📝 记录工作流标题:', potentialTitle);
+      }
+
+      // 检查是否还有下一步
+      if (updatedExecution.status === 'waiting_input') {
+        const nextStep = workflowEngine.getCurrentStep(updatedExecution.id);
+        if (nextStep) {
+          setWorkflowStep(nextStep);
+          setTimeout(async () => {
+            await showWorkflowStepPrompt(nextStep, updatedExecution.currentStep + 1, updatedExecution.totalSteps);
+          }, 500);
+        }
+      } else if (updatedExecution.status === 'processing') {
+        setWorkflowStep(null);
+        const processingMessage: ChatMessage = {
+          id: `workflow_processing_${Date.now()}`,
+          role: "assistant",
+          content: "🔄 正在处理您的请求，请稍候...\n\n所有信息已收集完成，AI正在为您生成结果。",
+          timestamp: Date.now(),
+        };
+        addMessage(processingMessage);
+        // 🔧 处理消息也不立即保存，等工作流完成后统一保存
+      }
+
+    } catch (error) {
+      console.error('工作流输入处理失败:', error);
+      toast.error(error instanceof Error ? error.message : '输入处理失败');
+    }
+  };
+
   // 新建对话
-  const handleNewConversation = async () => {
+  const handleNewConversation = async (isWorkflow = false) => {
     try {
       clearConversation();
       setSelectedImages([]);
       // 🔧 清空当前会话对话ID，开始新的对话分组
       setCurrentSessionConversationId(null);
       
-      // 🔧 显示新对话的问候语
-      setMessages([
-        {
-          id: "1",
-          role: "assistant",
-          content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
-          timestamp: Date.now(),
-        },
-      ]);
+      // 🔧 只有非工作流模式才显示问候语
+      if (!isWorkflow) {
+        setMessages([
+          {
+            id: "1",
+            role: "assistant",
+            content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
+            timestamp: Date.now(),
+          },
+        ]);
+      } else {
+        // 工作流模式清空消息，不显示默认问候语
+        setMessages([]);
+      }
       
       loadRecords(); // 刷新历史记录列表
-      console.log('✅ 已开始新对话会话');
+      console.log('✅ 已开始新对话会话', isWorkflow ? '(工作流模式)' : '');
     } catch (error) {
       console.error('新建对话失败:', error);
     }
@@ -258,6 +502,28 @@ export function ChatPage() {
 
   const handleSendMessage = async () => {
     if ((!inputValue.trim() && selectedImages.length === 0) || isTyping) return;
+
+    // 如果是工作流模式，处理工作流输入
+    if (isWorkflowMode && currentWorkflow) {
+      const userInput = inputValue.trim();
+      
+      // 添加用户消息
+      const userMessage: ChatMessage = {
+        id: `user_${Date.now()}`,
+        role: "user",
+        content: userInput,
+        timestamp: Date.now(),
+      };
+      addMessage(userMessage);
+      
+      // 清空输入
+      setInputValue("");
+      setSelectedImages([]);
+      
+      // 处理工作流输入
+      await handleWorkflowInput(userInput);
+      return;
+    }
 
     setIsTyping(true);
 
@@ -301,59 +567,55 @@ export function ChatPage() {
 
       addMessage(newUserMessage);
 
-      // 构建API请求消息格式
-      const apiMessages: ChatCompletionMessageParam[] = messages.map(msg => {
+      // 构建API请求消息格式 - 简化逻辑
+      const apiMessages: ChatCompletionMessageParam[] = [];
+      
+      // 添加历史消息
+      for (const msg of messages) {
         if (typeof msg.content === 'string') {
-          return {
-            role: msg.role,
+          // 纯文本消息
+          apiMessages.push({
+            role: msg.role as 'user' | 'assistant' | 'system',
             content: msg.content,
-          } as ChatCompletionMessageParam;
-        } else {
-          // 处理混合内容消息
-          const content = msg.content.map(item => {
-            if (item.type === 'text') {
-              return {
-                type: 'text' as const,
-                text: item.text,
-              };
-            } else {
-              return {
-                type: 'image_url' as const,
-                image_url: {
-                  url: item.imageUrl,
-                },
-              };
-            }
           });
-          
-          return {
-            role: msg.role,
-            content: content,
-          } as ChatCompletionMessageParam;
-        }
-      });
-
-      // 添加当前用户消息到API请求
-      const currentMessageContent = messageContent.map(item => {
-        if (item.type === 'text') {
-          return {
-            type: 'text' as const,
-            text: item.text,
-          };
         } else {
-          return {
-            type: 'image_url' as const,
-            image_url: {
-              url: item.imageUrl,
-            },
-          };
+          // 混合内容消息 - 只发送文本部分给API
+          const textParts = msg.content.filter(item => item.type === 'text');
+          if (textParts.length > 0) {
+            const combinedText = textParts.map(item => item.text).join('\n');
+            apiMessages.push({
+              role: msg.role as 'user' | 'assistant' | 'system',
+              content: combinedText,
+            });
+          }
         }
-      });
+      }
 
-      apiMessages.push({
-        role: 'user',
-        content: currentMessageContent,
-      } as ChatCompletionMessageParam);
+      // 添加当前用户消息
+      if (messageContent.length > 0) {
+        // 如果只有文本，发送纯文本
+        if (messageContent.length === 1 && messageContent[0].type === 'text') {
+          apiMessages.push({
+            role: 'user',
+            content: messageContent[0].text,
+          });
+        } else {
+          // 有图片的情况，暂时只发送文本部分
+          const textParts = messageContent.filter(item => item.type === 'text');
+          if (textParts.length > 0) {
+            apiMessages.push({
+              role: 'user',
+              content: textParts.map(item => item.text).join('\n'),
+            });
+          } else {
+            // 只有图片的情况
+            apiMessages.push({
+              role: 'user',
+              content: '请分析这张图片',
+            });
+          }
+        }
+      }
 
       // 保存原始输入用于后续判断
       const originalInput = inputValue.trim();
@@ -362,6 +624,13 @@ export function ChatPage() {
       // 清空输入
       setInputValue("");
       setSelectedImages([]);
+
+      // 记录API调用信息用于调试
+      console.log('💬 发送Chat API请求:', {
+        model: selectedModel,
+        messagesCount: apiMessages.length,
+        messages: apiMessages
+      });
 
       // 调用后端API
       const response = await fetch('/api/chat', {
@@ -377,11 +646,22 @@ export function ChatPage() {
 
       const data = await response.json();
 
+      console.log('💬 Chat API响应:', { 
+        status: response.status, 
+        ok: response.ok, 
+        data: data 
+      });
+
       if (!response.ok) {
-        throw new Error(data.error || '请求失败');
+        console.error('❌ Chat API错误:', data);
+        throw new Error(data.error || `请求失败 (${response.status})`);
       }
 
       // 添加AI回复
+      if (!data.message || !data.message.content) {
+        throw new Error('AI回复内容为空');
+      }
+
       const aiResponse: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -407,7 +687,16 @@ export function ChatPage() {
             const title = originalInput.length > 30 ? originalInput.substring(0, 30) + '...' : 
                           (originalInput || (originalImages.length > 0 ? '图片分析' : '新对话'));
             
-            const newConversation = await storageService.createConversation(title, selectedModel);
+            const newConversation = await storageService.createRecord({
+              title,
+              modelName: selectedModel,
+              type: 'text',
+              status: 'active',
+              tags: [],
+              content: { messages: [] },
+              messages: [],
+              metadata: {}
+            });
             conversationId = newConversation.id;
             
             // 🔧 保存到会话存储，后续消息都会添加到这个对话中
@@ -421,6 +710,9 @@ export function ChatPage() {
           await storageService.addMessageToConversation(conversationId, aiResponse);
           
           console.log('✅ 消息已添加到对话记录:', conversationId);
+          
+          // 🔧 Chat完成后触发热重载
+          loadRecords();
         } else {
           console.log('⚠️ 空对话未保存');
         }
@@ -789,35 +1081,92 @@ export function ChatPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="grid grid-cols-2 gap-2"
+              className="space-y-3"
             >
-              {AI_MODELS.map((model) => (
-                <Button
-                  key={model.id}
-                  variant={selectedModel === model.id ? "secondary" : "outline"}
-                  className={cn(
-                    "h-auto p-3 justify-start text-left",
-                    selectedModel === model.id && "ring-2 ring-primary/20"
-                  )}
-                  onClick={() => {
-                    setSelectedModel(model.id);
-                    setShowModelSelector(false);
-                  }}
-                >
-                  <div className="flex items-center gap-2 w-full">
-                    <span className="text-lg">{model.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm">{model.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {model.description}
+              {/* AI 模型分类 */}
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground mb-2 px-1">AI 模型</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {AI_MODELS.filter(model => model.type === 'ai').map((model) => (
+                    <Button
+                      key={model.id}
+                      variant={selectedModel === model.id ? "secondary" : "outline"}
+                      className={cn(
+                        "h-auto p-3 justify-start text-left",
+                        selectedModel === model.id && "ring-2 ring-primary/20"
+                      )}
+                      onClick={() => {
+                        setSelectedModel(model.id);
+                        setShowModelSelector(false);
+                        
+                        // 切换到AI模型，退出工作流模式
+                        setIsWorkflowMode(false);
+                        setCurrentWorkflow(null);
+                        setWorkflowStep(null);
+                      }}
+                    >
+                      <div className="flex items-center gap-2 w-full">
+                        <span className="text-lg">{model.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">{model.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {model.description}
+                          </div>
+                        </div>
+                        {selectedModel === model.id && (
+                          <Zap className="h-4 w-4 text-primary flex-shrink-0" />
+                        )}
                       </div>
-                    </div>
-                    {selectedModel === model.id && (
-                      <Zap className="h-4 w-4 text-primary flex-shrink-0" />
-                    )}
-                  </div>
-                </Button>
-              ))}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 工作流分类 */}
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground mb-2 px-1 flex items-center gap-1">
+                                      <div className="h-3 w-3 rounded-full bg-workflow-primary/20 flex items-center justify-center text-xs">🔄</div>
+                  智能工作流
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  {AI_MODELS.filter(model => model.type === 'workflow').map((model) => (
+                    <Button
+                      key={model.id}
+                      variant={selectedModel === model.id ? "secondary" : "outline"}
+                      className={cn(
+                        "h-auto p-3 justify-start text-left",
+                        selectedModel === model.id && "ring-2 ring-workflow-primary/20",
+                        "border-workflow-primary/30 hover:border-workflow-primary/50"
+                      )}
+                      onClick={() => {
+                        setSelectedModel(model.id);
+                        setShowModelSelector(false);
+                        
+                        // 启动工作流模式
+                        handleWorkflowStart(model.id);
+                      }}
+                    >
+                      <div className="flex items-center gap-3 w-full">
+                        <span className="text-lg">{model.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">{model.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {model.description}
+                          </div>
+                          {model.category && (
+                            <div className="text-xs text-workflow-primary mt-1">
+                              {model.category}
+                            </div>
+                          )}
+                        </div>
+                        {selectedModel === model.id && (
+                          <div className="h-4 w-4 rounded-full bg-workflow-primary flex items-center justify-center text-xs flex-shrink-0">🔄</div>
+                        )}
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+              </div>
             </motion.div>
           )}
         </div>

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, MessageSquare, Image, Tag, Trash2, Calendar, Download, Eye, X, Edit, Video } from 'lucide-react';
+import { Search, MessageSquare, Image, Tag, Trash2, Calendar, Download, Eye, X, Edit, Video, Workflow } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -15,32 +15,65 @@ import { useStorage } from "@/lib/store";
 import { useAppStore } from '@/lib/store';
 import { toast } from 'sonner';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { getWorkflowTemplate } from '@/lib/workflow-templates';
 
 // 临时存储拖拽的文件数据
 const dragFileCache = new Map<string, MediaFile & { record: HistoryRecord }>();
 
 // 获取类型对应的图标
-const getTypeIcon = (type: HistoryRecord['type']) => {
-  switch (type) {
+const getTypeIcon = (record: HistoryRecord) => {
+  // 检查是否是工作流记录（通过metadata判断）
+  if (record.metadata?.workflowId) {
+    return <Workflow className="h-4 w-4" />;
+  }
+  
+  // 根据类型显示图标
+  switch (record.type) {
     case 'text':
       return <MessageSquare className="h-4 w-4" />;
     case 'media':
       return <Image className="h-4 w-4" />;
+    case 'chat':
+      return <MessageSquare className="h-4 w-4" />;
+    case 'workflow':
+      return <Workflow className="h-4 w-4" />;
     default:
       return <MessageSquare className="h-4 w-4" />;
   }
 };
 
 // 获取类型对应的颜色
-const getTypeColor = (type: HistoryRecord['type']) => {
-  switch (type) {
+const getTypeColor = (record: HistoryRecord) => {
+  // 检查是否是工作流记录（通过metadata判断）
+  if (record.metadata?.workflowId) {
+    return 'text-workflow-primary';
+  }
+  
+  // 根据类型显示颜色
+  switch (record.type) {
     case 'text':
       return 'text-info';
     case 'media':
       return 'text-success';
+    case 'chat':
+      return 'text-primary';
+    case 'workflow':
+      return 'text-workflow-primary';
     default:
       return 'text-muted';
   }
+};
+
+// 获取显示名称（工作流显示工作流类型，普通对话显示模型名）
+const getDisplayName = (record: HistoryRecord) => {
+  // 检查是否是工作流记录
+  if (record.metadata?.workflowId) {
+    const template = getWorkflowTemplate(record.metadata.workflowId);
+    return template ? template.name : '工作流';
+  }
+  
+  // 普通对话显示模型名
+  return record.modelName;
 };
 
 // 历史记录卡片组件
@@ -72,7 +105,7 @@ function HistoryCard({ record, onLoadConversation }: {
 
   // 获取最后一条消息作为预览
   const getLastMessage = () => {
-    if (record.messages.length === 0) return '暂无消息';
+    if (record.messages.length === 0) return null; // 不显示任何内容
     const lastMessage = record.messages[record.messages.length - 1];
     
     // 处理新的消息内容格式
@@ -100,7 +133,7 @@ function HistoryCard({ record, onLoadConversation }: {
     
     return content.length > 100 
       ? content.substring(0, 100) + '...' 
-      : content || '暂无内容';
+      : content || null; // 没有内容时返回null
   };
 
   return (
@@ -113,8 +146,8 @@ function HistoryCard({ record, onLoadConversation }: {
       >
         <div className="flex items-start gap-3">
           {/* 类型图标 */}
-          <div className={cn("mt-1 flex-shrink-0", getTypeColor(record.type))}>
-            {getTypeIcon(record.type)}
+          <div className={cn("mt-1 flex-shrink-0", getTypeColor(record))}>
+            {getTypeIcon(record)}
           </div>
           
           <div className="flex-1 min-w-0">
@@ -124,34 +157,40 @@ function HistoryCard({ record, onLoadConversation }: {
             </h3>
             
             {/* 内容预览 */}
-            <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-              {getLastMessage()}
-            </p>
+            {getLastMessage() && (
+              <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                {getLastMessage()}
+              </p>
+            )}
             
             {/* 标签 */}
-            {record.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-2">
-                {record.tags.slice(0, 3).map((tag, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center gap-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded"
-                  >
-                    <Tag className="h-2 w-2" />
-                    {tag}
-                  </span>
-                ))}
-                {record.tags.length > 3 && (
-                  <span className="text-xs text-muted-foreground">
-                    +{record.tags.length - 3}
-                  </span>
-                )}
-              </div>
-            )}
+            {(() => {
+              // 过滤掉"工作流"标签
+              const filteredTags = record.tags.filter(tag => tag !== '工作流');
+              return filteredTags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {filteredTags.slice(0, 3).map((tag, index) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded"
+                    >
+                      <Tag className="h-2 w-2" />
+                      {tag}
+                    </span>
+                  ))}
+                  {filteredTags.length > 3 && (
+                    <span className="text-xs text-muted-foreground">
+                      +{filteredTags.length - 3}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             
             {/* 元信息 */}
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
-                <span>{record.modelName}</span>
+                <span>{getDisplayName(record)}</span>
                 <span>•</span>
                 <span>{new Date(record.createdAt).toLocaleDateString()}</span>
               </div>
@@ -778,10 +817,10 @@ export function HistoryLibrary() {
   useEffect(() => {
     // 只有在用户没有手动切换的情况下才自动切换
     if (!userManuallyChanged) {
-      const typeMapping: { [key: string]: 'text' | 'media' } = {
-        'chat': 'text',
-        'image': 'media',
-        'video': 'media',
+      const typeMapping: { [key: string]: HistoryRecord['type'] } = {
+        'chat': 'text',    // 聊天工具 -> 智能助理区块
+        'image': 'media',  // 图像工具 -> 媒体内容区块
+        'video': 'media',  // 视频工具 -> 媒体内容区块
       };
       
       const mappedType = typeMapping[historyType] || 'text';
@@ -796,7 +835,7 @@ export function HistoryLibrary() {
     setUserManuallyChanged(false);
   }, [historyType]);
 
-  // 初始化加载，默认显示文本对话
+  // 初始化加载，默认显示智能助理
   useEffect(() => {
     if (selectedType === null) {
       setSelectedType('text'); // 默认选择文本
@@ -869,21 +908,21 @@ export function HistoryLibrary() {
         {/* 类型过滤器 */}
         <div className="flex gap-1 p-1 bg-muted rounded-lg">
           <Button
-            variant={selectedType === 'text' ? "default" : "ghost"}
+            variant={selectedType !== 'media' ? "default" : "ghost"}
             size="sm"
             onClick={() => {
-              setSelectedType('text');
+              setSelectedType('text'); // 默认选择text类型代表智能助理
               setUserManuallyChanged(true); // 标记为用户手动切换
             }}
             className={cn(
               "flex-1 flex items-center justify-center gap-2 transition-all",
-              selectedType === 'text' 
+              selectedType !== 'media' 
                 ? "bg-background text-foreground shadow-sm" 
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
             <MessageSquare className="h-4 w-4" />
-            文本对话
+            智能助理
           </Button>
           <Button
             variant={selectedType === 'media' ? "default" : "ghost"}
@@ -950,14 +989,14 @@ export function HistoryLibrary() {
             ) : selectedType === 'media' ? (
               // 媒体网格 - 让MediaGrid自己处理空状态
               <MediaGrid />
-            ) : records.filter(record => record.type === selectedType).length === 0 ? (
-              // 文本对话空状态
+            ) : records.filter(record => record.type !== 'media').length === 0 ? (
+              // 智能助理空状态
               <div className="flex items-center justify-center py-8">
                 <div className="text-center">
                   <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">
                     {searchQuery || records.length > 0 
-                      ? '没有找到匹配的文本对话记录' 
+                      ? '没有找到匹配的智能助理记录' 
                       : '暂无历史记录'}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -966,17 +1005,17 @@ export function HistoryLibrary() {
                 </div>
               </div>
             ) : (
-              // 记录列表 - 实时过滤确保类型匹配
+              // 记录列表 - 显示所有非媒体类型的记录
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={`text-records-${selectedType}`}
+                  key={`assistant-records-${selectedType}`}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
                 >
                   {records
-                    .filter(record => record.type === selectedType) // 🔥 关键修复：实时过滤
+                    .filter(record => record.type !== 'media') // 智能助理：显示所有非媒体类型
                     .map((record, index) => (
                     <motion.div
                       key={record.id}

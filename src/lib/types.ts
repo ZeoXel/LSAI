@@ -22,7 +22,7 @@ export interface ChatMessage {
 // 历史记录类型定义
 export interface HistoryRecord {
   id: string;
-  type: 'text' | 'media' | 'chat';
+  type: 'text' | 'media' | 'chat' | 'workflow';
   title: string;
   modelName: string;
   status: string;
@@ -31,7 +31,7 @@ export interface HistoryRecord {
   tags: string[];
   content?: any;
   messages: ChatMessage[];
-  metadata?: any; // 存储生成相关的元数据
+  metadata?: any; // 存储生成相关的元数据，包括工作流执行状态
 }
 
 // 媒体文件类型
