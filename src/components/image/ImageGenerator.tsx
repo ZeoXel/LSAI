@@ -345,8 +345,27 @@ export function ImageGenerator() {
         return;
       }
       
-      setSelectedImage(file);
-      toast.success("图片已选择");
+      // 检查是否已经有这张图片了（避免重复添加）
+      const isDuplicate = selectedImages.some(img => 
+        img.name === file.name && img.size === file.size
+      );
+      
+      if (isDuplicate) {
+        toast.error("该图片已经添加过了");
+        return;
+      }
+      
+      // 检查图片总数限制
+      if (selectedImages.length >= 5) {
+        toast.error("最多只能选择5张图片");
+        return;
+      }
+      
+      // 将新图片添加到多图片列表中，而不是覆盖单图片
+      setSelectedImages(prev => [...prev, file]);
+      // 清除单图片选择
+      setSelectedImage(null);
+      toast.success(`图片已添加，当前共 ${selectedImages.length + 1} 张`);
     }
   };
 
@@ -381,8 +400,28 @@ export function ImageGenerator() {
     }
     
     if (validFiles.length > 0) {
-      setSelectedImages(validFiles);
-      toast.success(`已选择 ${validFiles.length} 张图片`);
+      // 检查是否会超过总数限制
+      const totalFiles = selectedImages.length + validFiles.length;
+      if (totalFiles > 5) {
+        toast.error(`最多只能选择5张图片，当前已有${selectedImages.length}张`);
+        return;
+      }
+      
+      // 过滤掉重复的文件
+      const newFiles = validFiles.filter(newFile => 
+        !selectedImages.some(existing => 
+          existing.name === newFile.name && existing.size === newFile.size
+        )
+      );
+      
+      if (newFiles.length === 0) {
+        toast.error("所选图片已存在，请选择其他图片");
+        return;
+      }
+      
+      // 累积添加而不是覆盖
+      setSelectedImages(prev => [...prev, ...newFiles]);
+      toast.success(`已添加 ${newFiles.length} 张图片，当前共 ${selectedImages.length + newFiles.length} 张`);
     }
   };
 
@@ -520,20 +559,10 @@ export function ImageGenerator() {
       return;
     }
 
-    // 检查是否是图像编辑模式
-    const isImageEdit = selectedModel === "gpt-image-1";
-    const isMultiImageModel = supportsMultipleImages();
-    
-    if (isImageEdit && !selectedImage && selectedImages.length === 0) {
-      toast.error("图像编辑模式需要上传图片");
-      return;
-    }
-    
-    // 对于支持多图的模型，检查是否有图片
-    if (isMultiImageModel && selectedImages.length === 0 && !selectedImage) {
-      toast.error("多图合并模式需要上传至少一张图片");
-      return;
-    }
+    // 检查是否有图像输入（支持文生图和图生图两种模式）
+    const hasImageInput = selectedImage || selectedImages.length > 0;
+    const isImageEdit = selectedModel === "gpt-image-1" && hasImageInput;
+    const isMultiImageModel = supportsMultipleImages() && hasImageInput;
 
     const newRecord: GenerationRecord = {
       id: Date.now().toString(),
