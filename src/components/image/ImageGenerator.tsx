@@ -847,32 +847,27 @@ export function ImageGenerator() {
           toast.error('有图片大小超过10MB');
           return;
         }
-        // 检查是否会超过总数限制
-        const totalFiles = selectedImages.length + imageFiles.length;
-        if (totalFiles > 5) {
-          toast.error(`最多只能选择5张图片，当前已有${selectedImages.length}张`);
-          return;
+        
+        // 如果是支持多图的模型且拖拽了多个文件
+        if (supportsMultipleImages() && imageFiles.length > 1) {
+          if (imageFiles.length > 5) {
+            toast.error('最多只能选择5张图片');
+            return;
+          }
+          setSelectedImages(prev => [...prev, ...imageFiles]);
+          toast.success(`已拖拽添加图片到列表`);
+        } else {
+          // 单图模式或只有一个文件
+          const file = imageFiles[0];
+          if (supportsMultipleImages()) {
+            setSelectedImages(prev => [...prev, file]);
+            toast.success('图片已添加到合并列表');
+          } else {
+            setSelectedImage(file);
+            setAutoUseLastImage(false);
+            toast.success('图片已选择');
+          }
         }
-        
-        // 过滤掉重复的文件
-        const newFiles = imageFiles.filter(newFile => 
-          !selectedImages.some(existing => 
-            existing.name === newFile.name && existing.size === newFile.size
-          )
-        );
-        
-        if (newFiles.length === 0) {
-          toast.error("所拖拽的图片已存在，请选择其他图片");
-          return;
-        }
-        
-        // 累积添加拖拽的图片而不是覆盖
-        setSelectedImages(prev => [...prev, ...newFiles]);
-        // 清除单图片选择（如果有的话）
-        setSelectedImage(null);
-        setAutoUseLastImage(false);
-        
-        toast.success(`已拖拽添加 ${newFiles.length} 张图片，当前共 ${selectedImages.length + newFiles.length} 张`);
       }
     } catch (error) {
       console.error('处理拖拽失败:', error);
