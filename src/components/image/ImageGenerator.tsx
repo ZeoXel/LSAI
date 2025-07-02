@@ -745,7 +745,6 @@ export function ImageGenerator() {
       }));
 
       toast.error(error instanceof Error ? error.message : "生成失败");
-    } finally {
     }
   };
 
@@ -848,24 +847,53 @@ export function ImageGenerator() {
           return;
         }
         
-        // 如果是支持多图的模型且拖拽了多个文件
-        if (supportsMultipleImages() && imageFiles.length > 1) {
+        // 检查是否有多张图片
+        if (imageFiles.length > 1) {
+          // 如果当前模型不支持多图，自动切换到支持多图的模型
+          if (!supportsMultipleImages()) {
+            setSelectedModel("gpt-image-1");
+            toast.success('已自动切换到支持多图的模型');
+          }
+          
           if (imageFiles.length > 5) {
             toast.error('最多只能选择5张图片');
             return;
           }
+          
+          // 检查累计图片数量是否超限
+          if (selectedImages.length + imageFiles.length > 5) {
+            toast.error(`最多只能选择5张图片，当前已选择${selectedImages.length}张`);
+            return;
+          }
+          
           setSelectedImages(prev => [...prev, ...imageFiles]);
-          toast.success(`已拖拽添加图片到列表`);
+          toast.success(`已添加${imageFiles.length}张图片到合并列表`);
         } else {
-          // 单图模式或只有一个文件
+          // 单张图片
           const file = imageFiles[0];
           if (supportsMultipleImages()) {
+            // 支持多图的模型，累积添加
+            if (selectedImages.length >= 5) {
+              toast.error('最多只能选择5张图片');
+              return;
+            }
             setSelectedImages(prev => [...prev, file]);
             toast.success('图片已添加到合并列表');
           } else {
-            setSelectedImage(file);
-            setAutoUseLastImage(false);
-            toast.success('图片已选择');
+            // 不支持多图的模型，检查是否需要累积
+            if (selectedImage || selectedImages.length > 0) {
+              // 如果已有图片，切换到多图模式并累积
+              setSelectedModel("gpt-image-1");
+              const allImages = selectedImage ? [selectedImage, file] : [...selectedImages, file];
+              setSelectedImages(allImages);
+              setSelectedImage(null); // 清空单图选择
+              toast.success('已切换到多图模式并添加图片');
+            } else {
+              // 第一次添加图片
+              setSelectedImage(file);
+              setAutoUseLastImage(false);
+              toast.success('图片已选择');
+            }
           }
         }
       }
@@ -1229,13 +1257,14 @@ export function ImageGenerator() {
                         ? "描述您想要对上一张图片进行的进一步修改..."
                         : "描述您想要对图片进行的编辑..."
                       : "请先上传图片或拖拽图片进行编辑"
-                    : records.some(r => r.isGenerating) ? "⏳ 后台生成中，可继续输入下一个任务... (Enter生成，Shift+Enter换行)" : "描述您想要生成的图像或拖拽图片进行参考... (Enter生成，Shift+Enter换行)"
+                    : records.some(r => r.isGenerating) 
+                      ? "⏳ 后台生成中，可继续输入下一个任务... (Enter生成，Shift+Enter换行)"
+                      : "描述您想要生成的图像或拖拽图片进行参考... (Enter生成，Shift+Enter换行)"
             }
             className={cn(
               "w-full min-h-16 max-h-32 p-3 pr-20 text-sm bg-background border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-200",
               isDragOver && "border-primary/50 bg-primary/5"
             )}
-            
           />
           
           {/* 右下角按钮组 */}
@@ -1258,7 +1287,6 @@ export function ImageGenerator() {
                 variant="ghost"
                 size="icon"
                 onClick={() => multiFileInputRef.current?.click()}
-                
                 className="h-8 w-8 hover:bg-muted"
                 title="上传多张图片进行合并"
               >
@@ -1274,7 +1302,6 @@ export function ImageGenerator() {
                 variant="ghost"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
-                
                 className="h-8 w-8 hover:bg-muted"
                 title="上传参考图片"
               >
@@ -1298,7 +1325,8 @@ export function ImageGenerator() {
                 records.filter(r => r.isGenerating).length >= 3 
                   ? "最多同时进行3个生成任务，请等待完成后再试"
                   : "发送生成请求"
-              }            >
+              }
+            >
               <Send className="h-4 w-4" />
             </Button>
           </div>
