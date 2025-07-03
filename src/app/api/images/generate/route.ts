@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// 图像生成超时时间（60秒）
+const REQUEST_TIMEOUT = 60000;
+
 // 图像生成请求接口
 interface ImageGenerationRequest {
   prompt: string;
@@ -42,17 +45,36 @@ export async function POST(request: NextRequest) {
       size: size,
     };
 
-    // 调用DMXAPI图像生成接口
-    const response = await fetch('https://www.dmxapi.cn/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer sk-G3oRkZnME9LinvDBWQpgyr8eLWmi1cinSWDm5iowGr7IWxXp',
-        'Accept': 'application/json',
-        'User-Agent': 'DMXAPI/1.0.0 (https://www.dmxapi.cn)',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    // 创建带超时的fetch请求
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+    let response;
+    try {
+      // 调用DMXAPI图像生成接口
+      response = await fetch('https://www.dmxapi.cn/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer sk-G3oRkZnME9LinvDBWQpgyr8eLWmi1cinSWDm5iowGr7IWxXp',
+          'Accept': 'application/json',
+          'User-Agent': 'DMXAPI/1.0.0 (https://www.dmxapi.cn)',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+    } catch (fetchError: unknown) {
+      clearTimeout(timeoutId);
+      
+      // 处理中断错误
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        throw new Error('图像生成请求超时，请稍后重试');
+      }
+      
+      throw fetchError;
+    }
 
     if (!response.ok) {
       let errorMessage = '图像生成失败';

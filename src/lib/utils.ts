@@ -70,12 +70,12 @@ export const compressImage = async (
         progressCallback?.(30);
 
         // 🎯 智能尺寸计算
-        let { width, height } = img;
+      let { width, height } = img;
         const originalSize = file.size;
-        
+
         // 如果图片尺寸过大，按比例缩小
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height);
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
           width = Math.floor(width * ratio);
           height = Math.floor(height * ratio);
         }
@@ -85,10 +85,10 @@ export const compressImage = async (
           const sizeRatio = Math.sqrt(maxFileSize / originalSize);
           width = Math.floor(width * sizeRatio);
           height = Math.floor(height * sizeRatio);
-        }
+      }
 
-        canvas.width = width;
-        canvas.height = height;
+      canvas.width = width;
+      canvas.height = height;
 
         progressCallback?.(60);
 
@@ -101,17 +101,17 @@ export const compressImage = async (
 
         // 🔄 多级压缩策略
         const tryCompress = (currentQuality: number) => {
-          canvas.toBlob(
-            (blob) => {
+      canvas.toBlob(
+        (blob) => {
               if (!blob) {
                 reject(new Error('压缩失败'));
                 return;
               }
 
-              const compressedFile = new File([blob], file.name, {
-                type: file.type,
-                lastModified: Date.now(),
-              });
+            const compressedFile = new File([blob], file.name, {
+              type: file.type,
+              lastModified: Date.now(),
+            });
 
               // 如果压缩后仍然太大，继续降低质量
               if (compressedFile.size > maxFileSize && currentQuality > 0.3) {
@@ -129,11 +129,11 @@ export const compressImage = async (
                 压缩后尺寸: `${width}x${height}`
               });
 
-              resolve(compressedFile);
-            },
-            file.type,
+            resolve(compressedFile);
+        },
+        file.type,
             currentQuality
-          );
+      );
         };
 
         tryCompress(quality);

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // Vercel限制常量
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB per file
 const MAX_TOTAL_SIZE = 4 * 1024 * 1024; // 4MB total
-const REQUEST_TIMEOUT = 120000; // 120秒超时（为图像处理预留足够时间）
+const REQUEST_TIMEOUT = 300000; // 300秒超时（为图像处理预留足够时间）
 
 export async function POST(request: NextRequest) {
   try {

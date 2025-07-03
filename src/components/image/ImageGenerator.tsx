@@ -644,7 +644,7 @@ export function ImageGenerator() {
     // 🕐 显示长时间处理提示
     if (isImageEdit || isMultiImageModel) {
       if (selectedModel === "gpt-image-1") {
-        toast.info("🎨 GPT Image Editor 处理中，通常需要1-2分钟，请耐心等待...", { duration: 5000 });
+        toast.info("🎨 GPT Image Editor 处理中，通常需要3-5分钟，请耐心等待...", { duration: 5000 });
       } else {
         toast.info("⚡ 图像编辑处理中，可能需要较长时间，请耐心等待...", { duration: 3000 });
       }
