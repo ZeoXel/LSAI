@@ -137,17 +137,35 @@ export class SupabaseStorageService implements StorageService {
   }
 
   async getRecord(id: string): Promise<HistoryRecord | null> {
-    const { data, error } = await supabase
-      .from('history_records')
-      .select()
-      .eq('id', id)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('history_records')
+        .select()
+        .eq('id', id)
+        .single();
+        
+      if (error) {
+        // 404/406错误通常表示记录不存在，这是正常情况，不需要记录错误
+        if (error.code === 'PGRST116' || error.message?.includes('No rows found')) {
+          console.log(`📝 记录不存在: ${id}`);
+          return null;
+        }
+        
+        // 其他错误才记录为错误
+        console.error('获取记录失败:', { 
+          id, 
+          error: error.message, 
+          code: error.code,
+          details: error.details 
+        });
+        return null;
+      }
       
-    if (error) {
-      console.error('获取记录失败:', error);
+      return mapDbToTs(data);
+    } catch (error) {
+      console.error('获取记录异常:', error);
       return null;
     }
-    return mapDbToTs(data);
   }
 
   async listRecords(options: ListOptions = {}): Promise<ListResponse<HistoryRecord>> {
@@ -262,17 +280,35 @@ export class SupabaseStorageService implements StorageService {
   }
 
   async getFile(id: string): Promise<MediaFile | null> {
-    const { data, error } = await supabase
-      .from('media_files')
-      .select()
-      .eq('id', id)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('media_files')
+        .select()
+        .eq('id', id)
+        .single();
+        
+      if (error) {
+        // 404/406错误通常表示文件不存在，这是正常情况，不需要记录错误
+        if (error.code === 'PGRST116' || error.message?.includes('No rows found')) {
+          console.log(`📁 文件不存在: ${id}`);
+          return null;
+        }
+        
+        // 其他错误才记录为错误
+        console.error('获取文件失败:', { 
+          id, 
+          error: error.message, 
+          code: error.code,
+          details: error.details 
+        });
+        return null;
+      }
       
-    if (error) {
-      console.error('获取文件失败:', error);
+      return mapDbToTs(data);
+    } catch (error) {
+      console.error('获取文件异常:', error);
       return null;
     }
-    return mapDbToTs(data);
   }
 
   async deleteFile(id: string): Promise<void> {

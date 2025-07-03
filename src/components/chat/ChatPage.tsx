@@ -11,7 +11,7 @@ import { useHistoryStore } from "@/lib/history-store";
 import { useConversationStore } from "@/lib/conversation-store";
 import { ChatMessage, TextContent, ImageContent } from "@/lib/types";
 import { useStorage } from "@/lib/store";
-import { convertFileToBase64, isValidImageFile, compressImage } from "@/lib/utils";
+import { convertFileToBase64, isValidImageFile, compressImage, safeParseResponse, type CompressOptions } from "@/lib/utils";
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -153,18 +153,10 @@ export function ChatPage() {
         // 🔧 检查sessionStorage中是否有当前对话ID
         const sessionConversationId = getCurrentSessionConversationId();
         
+        // 🔧 简单修复：页面加载时清理可能无效的session ID，避免406错误
         if (sessionConversationId) {
-          // 🔧 恢复具体对话
-          const conversation = await storageService.getRecord(sessionConversationId);
-          if (conversation) {
-            const messages = conversation.content?.messages || conversation.messages || [];
-            if (messages.length > 0) {
-              setMessages(messages);
-              setSelectedModel(conversation.modelName);
-              console.log('✅ 会话对话状态已恢复:', conversation.title, `包含${messages.length}条消息`);
-              return;
-            }
-          }
+          console.log('🔧 检测到session ID，清理以避免无效请求:', sessionConversationId);
+          setCurrentSessionConversationId(null);
         }
         
         // 🔧 fallback: 尝试从存储服务获取活跃对话
@@ -539,11 +531,10 @@ export function ChatPage() {
         });
       }
 
-      // 添加图片内容
+      // 🎨 添加图片内容 - 图片已预压缩
       for (const image of selectedImages) {
         try {
-          const compressedImage = await compressImage(image);
-          const base64Image = await convertFileToBase64(compressedImage);
+          const base64Image = await convertFileToBase64(image);
           
           messageContent.push({
             type: 'image',
@@ -632,7 +623,7 @@ export function ChatPage() {
         messages: apiMessages
       });
 
-      // 调用后端API
+      // 🔒 调用后端API - 安全解析版本
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -644,7 +635,7 @@ export function ChatPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = await safeParseResponse(response);
 
       console.log('💬 Chat API响应:', { 
         status: response.status, 
@@ -737,7 +728,7 @@ export function ChatPage() {
     }
   };
 
-  // 处理图片选择
+  // 🎨 处理图片选择 - 智能压缩版本
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     
@@ -747,8 +738,8 @@ export function ChatPage() {
         toast.error(`${file.name} 不是支持的图片格式`);
         return false;
       }
-      if (file.size > 10 * 1024 * 1024) { // 10MB限制
-        toast.error(`${file.name} 文件过大，请选择小于10MB的图片`);
+      if (file.size > 50 * 1024 * 1024) { // 50MB限制（压缩前）
+        toast.error(`${file.name} 文件过大，请选择小于50MB的图片`);
         return false;
       }
       return true;
@@ -759,7 +750,49 @@ export function ChatPage() {
       return;
     }
 
-    setSelectedImages(prev => [...prev, ...validImages]);
+    if (validImages.length === 0) return;
+
+    // 🎨 智能压缩处理
+    const compressedImages: File[] = [];
+    let processingCount = 0;
+    
+    for (const file of validImages) {
+      try {
+        const toastId = toast.loading(`正在压缩图片: ${file.name}`, {
+          description: '0%'
+        });
+
+        const compressedFile = await compressImage(file, {
+          maxWidth: 1920,
+          maxHeight: 1080,
+          quality: 0.8,
+          maxFileSize: 5 * 1024 * 1024, // 5MB
+          progressCallback: (progress) => {
+            toast.loading(`正在压缩图片: ${file.name}`, {
+              id: toastId,
+              description: `${progress}%`
+            });
+          }
+        });
+
+        compressedImages.push(compressedFile);
+        processingCount++;
+        
+        toast.success(`图片压缩完成: ${file.name}`, {
+          id: toastId,
+          description: `${processingCount}/${validImages.length} 张图片已处理`
+        });
+        
+      } catch (error) {
+        console.error('压缩图片失败:', error);
+        toast.error(`压缩失败: ${file.name}`);
+      }
+    }
+
+    if (compressedImages.length > 0) {
+      setSelectedImages(prev => [...prev, ...compressedImages]);
+      toast.success(`已添加 ${compressedImages.length} 张图片`);
+    }
     
     // 清空input以允许选择相同文件
     if (fileInputRef.current) {
@@ -954,15 +987,15 @@ export function ChatPage() {
         }
       }
 
-      // 处理文件拖拽
+      // 🎨 处理文件拖拽 - 智能压缩版本
       const files = Array.from(e.dataTransfer.files);
       const validImages = files.filter(file => {
         if (!file.type.startsWith('image/')) {
           toast.error(`${file.name} 不是图片文件`);
           return false;
         }
-        if (file.size > 10 * 1024 * 1024) {
-          toast.error(`${file.name} 文件过大，请选择小于10MB的图片`);
+        if (file.size > 50 * 1024 * 1024) { // 50MB限制（压缩前）
+          toast.error(`${file.name} 文件过大，请选择小于50MB的图片`);
           return false;
         }
         return true;
@@ -974,8 +1007,47 @@ export function ChatPage() {
       }
 
       if (validImages.length > 0) {
-        setSelectedImages(prev => [...prev, ...validImages]);
-        toast.success(`已添加${validImages.length}张图片`);
+        // 🎨 智能压缩处理
+        const compressedImages: File[] = [];
+        let processingCount = 0;
+        
+        for (const file of validImages) {
+          try {
+            const toastId = toast.loading(`正在压缩拖拽图片: ${file.name}`, {
+              description: '0%'
+            });
+
+            const compressedFile = await compressImage(file, {
+              maxWidth: 1920,
+              maxHeight: 1080,
+              quality: 0.8,
+              maxFileSize: 5 * 1024 * 1024, // 5MB
+              progressCallback: (progress) => {
+                toast.loading(`正在压缩拖拽图片: ${file.name}`, {
+                  id: toastId,
+                  description: `${progress}%`
+                });
+              }
+            });
+
+            compressedImages.push(compressedFile);
+            processingCount++;
+            
+            toast.success(`图片压缩完成: ${file.name}`, {
+              id: toastId,
+              description: `${processingCount}/${validImages.length} 张图片已处理`
+            });
+            
+          } catch (error) {
+            console.error('压缩拖拽图片失败:', error);
+            toast.error(`压缩失败: ${file.name}`);
+          }
+        }
+
+        if (compressedImages.length > 0) {
+          setSelectedImages(prev => [...prev, ...compressedImages]);
+          toast.success(`已添加 ${compressedImages.length} 张图片`);
+        }
       }
     } catch (error) {
       console.error('处理拖拽失败:', error);

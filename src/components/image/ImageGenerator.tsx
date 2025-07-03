@@ -18,7 +18,7 @@ import {
   X,
   Wand2
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, imageStorageManager, safeParseResponse } from "@/lib/utils";
 import { useHistoryStore } from "@/lib/history-store";
 import { PromptOptimizer } from "@/components/ai/PromptOptimizer";
 import { useAppStore, useStorage } from "@/lib/store";
@@ -28,27 +28,27 @@ const IMAGE_MODELS = [
   {
     id: "dall-e-3",
     name: "DALL·E 3",
-    description: "OpenAI最新图像生成模型",
-    icon: "🎨"
-  },
+    description: "OpenAI快速生图模型（文生图）",
+    icon: "🎨",
+    supportsImageInput: false,  },
   {
     id: "seedream-3.0",
     name: "Seedream 3.0", 
-    description: "高质量创意图像生成",
-    icon: "🌟"
-  },
+    description: "高质量创意图像生成（文生图）",
+    icon: "🌟",
+    supportsImageInput: false,  },
   {
     id: "flux-kontext-pro",
     name: "Flux Kontext Pro",
-    description: "专业级上下文理解图像生成",
-    icon: "⚡"
-  },
+    description: "专业级上下文理解图像生成（全能模型）",
+    icon: "⚡",
+    supportsImageInput: true,  },
   {
     id: "gpt-image-1",
     name: "GPT Image Editor",
-    description: "智能图像编辑工具",
-    icon: "✏️"
-  }
+    description: "OpenAI智能图像编辑工具（全能模型）",
+    icon: "✏️",
+    supportsImageInput: true,  }
 ];
 
 // 图像尺寸配置
@@ -75,36 +75,15 @@ const IMAGE_GENERATOR_STORAGE_KEY = 'imageGeneratorRecords';
 
 // 从localStorage加载记录
 const loadRecordsFromStorage = (): GenerationRecord[] => {
-  try {
-    const stored = localStorage.getItem(IMAGE_GENERATOR_STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // 重新构造Date对象，并过滤掉无效的记录
-      return parsed
-        .map((record: any) => ({
-          ...record,
-          timestamp: new Date(record.timestamp)
-        }))
-        .filter((record: GenerationRecord) => {
-          // 确保必要字段存在
-          return record.id && record.prompt && record.model && record.timestamp;
-        });
-    }
-  } catch (error) {
-    console.error('加载图像生成记录失败:', error);
-  }
-  return [];
+  return imageStorageManager.load(IMAGE_GENERATOR_STORAGE_KEY) as GenerationRecord[];
 };
-
 // 保存记录到localStorage
 const saveRecordsToStorage = (records: GenerationRecord[]) => {
-  try {
-    localStorage.setItem(IMAGE_GENERATOR_STORAGE_KEY, JSON.stringify(records));
-  } catch (error) {
-    console.error('保存图像生成记录失败:', error);
+  const success = imageStorageManager.save(records, IMAGE_GENERATOR_STORAGE_KEY);
+  if (!success) {
+    console.warn("⚠️ 图像记录存储优化中，部分数据可能被精简");
   }
 };
-
 export function ImageGenerator() {
   const storageService = useStorage();
   const [selectedModel, setSelectedModel] = useState("seedream-3.0");
@@ -133,6 +112,46 @@ export function ImageGenerator() {
   // 检查当前模型是否支持多图片上传
   const supportsMultipleImages = () => {
     return selectedModel === "gpt-image-1" || selectedModel === "flux-kontext-pro";
+  };
+
+  // 🧠 智能模型切换逻辑
+  const autoSwitchModelForImageInput = () => {
+    // 获取当前模型信息
+    const currentModel = IMAGE_MODELS.find(model => model.id === selectedModel);
+    
+    // 检查是否有图片输入
+    const hasImageInput = selectedImage || selectedImages.length > 0;
+    
+    // 如果有图片输入且当前模型不支持图生图
+    if (hasImageInput && currentModel && !currentModel.supportsImageInput) {
+      console.log(`🔄 检测到图片输入，${currentModel.name} 不支持图生图，自动切换模型...`);
+      
+      // 优先选择 flux-kontext-pro（推荐的图生图模型）
+      const recommendedModel = "flux-kontext-pro";
+      setSelectedModel(recommendedModel);
+      
+      const newModel = IMAGE_MODELS.find(model => model.id === recommendedModel);
+      toast.info(`已自动切换到 ${newModel?.name}，该模型支持图生图功能`);
+      
+      return true; // 表示发生了切换
+    }
+    
+    return false; // 没有切换
+  };
+
+  // 🎯 检查模型兼容性
+  const checkModelCompatibility = () => {
+    const currentModel = IMAGE_MODELS.find(model => model.id === selectedModel);
+    const hasImageInput = selectedImage || selectedImages.length > 0;
+    
+    if (hasImageInput && currentModel && !currentModel.supportsImageInput) {
+      return {
+        compatible: false,
+        message: `${currentModel.name} 不支持图生图，请选择支持的模型（Flux Kontext Pro 或 GPT Image Editor）`
+      };
+    }
+    
+    return { compatible: true, message: "" };
   };
 
   // 自动保存记录到localStorage
@@ -271,7 +290,7 @@ export function ImageGenerator() {
         setAutoUseLastImage(false); // 这不是来自上一张图片
         
         // 切换到编辑模式
-        setSelectedModel("gpt-image-1");
+        autoSwitchModelForImageInput();
         
         // 如果有原始提示词，可以预填充到输入框
         if (originalPrompt && originalPrompt !== fileName) {
@@ -366,7 +385,9 @@ export function ImageGenerator() {
       // 清除单图片选择
       setSelectedImage(null);
       toast.success(`图片已添加，当前共 ${selectedImages.length + 1} 张`);
-    }
+      
+      // 🔄 自动切换模型（如果需要）
+      setTimeout(() => autoSwitchModelForImageInput(), 100);    }
   };
 
   // 处理多图片选择
@@ -422,7 +443,9 @@ export function ImageGenerator() {
       // 累积添加而不是覆盖
       setSelectedImages(prev => [...prev, ...newFiles]);
       toast.success(`已添加 ${newFiles.length} 张图片，当前共 ${selectedImages.length + newFiles.length} 张`);
-    }
+      
+      // 🔄 自动切换模型（如果需要）
+      setTimeout(() => autoSwitchModelForImageInput(), 100);    }
   };
 
   // 移除选中的图片
@@ -539,10 +562,8 @@ export function ImageGenerator() {
         setAutoUseLastImage(true);
         
         // 自动切换到编辑模式
-        if (selectedModel !== "gpt-image-1") {
-          setSelectedModel("gpt-image-1");
-        }
-        
+            // 🔄 智能切换模型
+            setTimeout(() => autoSwitchModelForImageInput(), 100);        
         toast.success("已选择上一张生成的图片进行编辑");
       } catch (error) {
         console.error("加载上一张图片失败:", error);
@@ -559,7 +580,18 @@ export function ImageGenerator() {
       return;
     }
 
-    // 检查是否有图像输入（支持文生图和图生图两种模式）
+
+    // 🔍 检查模型兼容性
+    const compatibility = checkModelCompatibility();
+    if (!compatibility.compatible) {
+      // 尝试自动切换
+      const switched = autoSwitchModelForImageInput();
+      if (!switched) {
+        // 如果无法自动切换，显示错误
+        toast.error(compatibility.message);
+        return;
+      }
+    }    // 检查是否有图像输入（支持文生图和图生图两种模式）
     const hasImageInput = selectedImage || selectedImages.length > 0;
     const isImageEdit = selectedModel === "gpt-image-1" && hasImageInput;
     const isMultiImageModel = supportsMultipleImages() && hasImageInput;
@@ -614,11 +646,34 @@ export function ImageGenerator() {
         });
       }
 
-      const data = await response.json();
-      console.log("📦 API返回完整数据:", JSON.stringify(data, null, 2));
+      // 安全地处理API响应
+      let data;
+      const contentType = response.headers.get('Content-Type') || '';
+      
+      console.log("📦 API响应信息:", {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: contentType,
+        ok: response.ok
+      });
+
+      try {
+        if (contentType.includes('application/json')) {
+          data = await response.json();
+          console.log("📦 API返回完整数据:", JSON.stringify(data, null, 2));
+        } else {
+          const textResponse = await response.text();
+          console.log("📦 API返回文本数据:", textResponse);
+          throw new Error(`服务器返回非JSON响应: ${textResponse.substring(0, 100)}...`);
+        }
+      } catch (parseError) {
+        const textFallback = await response.clone().text();
+        console.error("❌ JSON解析失败，原始响应:", textFallback);
+        throw new Error(`响应解析失败: ${textFallback.substring(0, 100)}...`);
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || "生成失败");
+        throw new Error(data?.error || "生成失败");
       }
 
       // 检查images字段
@@ -819,10 +874,8 @@ export function ImageGenerator() {
             setAutoUseLastImage(false);
             
             // 如果拖拽的是图片，自动切换到编辑模式
-            if (selectedModel !== "gpt-image-1") {
-              setSelectedModel("gpt-image-1");
-            }
-            
+            // 🔄 智能切换模型
+            setTimeout(() => autoSwitchModelForImageInput(), 100);            
             toast.success('图片已添加，可以开始编辑');
           }
           return;
@@ -851,7 +904,7 @@ export function ImageGenerator() {
         if (imageFiles.length > 1) {
           // 如果当前模型不支持多图，自动切换到支持多图的模型
           if (!supportsMultipleImages()) {
-            setSelectedModel("gpt-image-1");
+            autoSwitchModelForImageInput();
             toast.success('已自动切换到支持多图的模型');
           }
           
@@ -868,7 +921,9 @@ export function ImageGenerator() {
           
           setSelectedImages(prev => [...prev, ...imageFiles]);
           toast.success(`已添加${imageFiles.length}张图片到合并列表`);
-        } else {
+          
+          // 🔄 自动切换模型（如果需要）
+          setTimeout(() => autoSwitchModelForImageInput(), 100);        } else {
           // 单张图片
           const file = imageFiles[0];
           if (supportsMultipleImages()) {
@@ -883,7 +938,7 @@ export function ImageGenerator() {
             // 不支持多图的模型，检查是否需要累积
             if (selectedImage || selectedImages.length > 0) {
               // 如果已有图片，切换到多图模式并累积
-              setSelectedModel("gpt-image-1");
+              autoSwitchModelForImageInput();
               const allImages = selectedImage ? [selectedImage, file] : [...selectedImages, file];
               setSelectedImages(allImages);
               setSelectedImage(null); // 清空单图选择
