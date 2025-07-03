@@ -115,15 +115,17 @@ export function ImageGenerator() {
   };
 
   // 🧠 智能模型切换逻辑
-  const autoSwitchModelForImageInput = () => {
+  const autoSwitchModelForImageInput = (hasImageInput?: boolean) => {
     // 获取当前模型信息
     const currentModel = IMAGE_MODELS.find(model => model.id === selectedModel);
     
-    // 检查是否有图片输入
-    const hasImageInput = selectedImage || selectedImages.length > 0;
+    // 检查是否有图片输入（优先使用传入的参数，否则检查当前状态）
+    const hasImages = hasImageInput !== undefined ? hasImageInput : (selectedImage || selectedImages.length > 0);
+    
+    console.log(`🔍 检查模型切换: 当前模型=${currentModel?.name}, 有图片输入=${hasImages}, 支持图生图=${currentModel?.supportsImageInput}`);
     
     // 如果有图片输入且当前模型不支持图生图
-    if (hasImageInput && currentModel && !currentModel.supportsImageInput) {
+    if (hasImages && currentModel && !currentModel.supportsImageInput) {
       console.log(`🔄 检测到图片输入，${currentModel.name} 不支持图生图，自动切换模型...`);
       
       // 优先选择 flux-kontext-pro（推荐的图生图模型）
@@ -290,7 +292,7 @@ export function ImageGenerator() {
         setAutoUseLastImage(false); // 这不是来自上一张图片
         
         // 切换到编辑模式
-        autoSwitchModelForImageInput();
+        autoSwitchModelForImageInput(true);
         
         // 如果有原始提示词，可以预填充到输入框
         if (originalPrompt && originalPrompt !== fileName) {
@@ -387,7 +389,7 @@ export function ImageGenerator() {
       toast.success(`图片已添加，当前共 ${selectedImages.length + 1} 张`);
       
       // 🔄 自动切换模型（如果需要）
-      setTimeout(() => autoSwitchModelForImageInput(), 100);    }
+      autoSwitchModelForImageInput(true);    }
   };
 
   // 处理多图片选择
@@ -445,7 +447,7 @@ export function ImageGenerator() {
       toast.success(`已添加 ${newFiles.length} 张图片，当前共 ${selectedImages.length + newFiles.length} 张`);
       
       // 🔄 自动切换模型（如果需要）
-      setTimeout(() => autoSwitchModelForImageInput(), 100);    }
+      autoSwitchModelForImageInput(true);    }
   };
 
   // 移除选中的图片
@@ -563,7 +565,7 @@ export function ImageGenerator() {
         
         // 自动切换到编辑模式
             // 🔄 智能切换模型
-            setTimeout(() => autoSwitchModelForImageInput(), 100);        
+            autoSwitchModelForImageInput(true);        
         toast.success("已选择上一张生成的图片进行编辑");
       } catch (error) {
         console.error("加载上一张图片失败:", error);
@@ -585,7 +587,7 @@ export function ImageGenerator() {
     const compatibility = checkModelCompatibility();
     if (!compatibility.compatible) {
       // 尝试自动切换
-      const switched = autoSwitchModelForImageInput();
+      const switched = autoSwitchModelForImageInput(true);
       if (!switched) {
         // 如果无法自动切换，显示错误
         toast.error(compatibility.message);
@@ -875,7 +877,7 @@ export function ImageGenerator() {
             
             // 如果拖拽的是图片，自动切换到编辑模式
             // 🔄 智能切换模型
-            setTimeout(() => autoSwitchModelForImageInput(), 100);            
+            autoSwitchModelForImageInput(true);            
             toast.success('图片已添加，可以开始编辑');
           }
           return;
@@ -904,7 +906,7 @@ export function ImageGenerator() {
         if (imageFiles.length > 1) {
           // 如果当前模型不支持多图，自动切换到支持多图的模型
           if (!supportsMultipleImages()) {
-            autoSwitchModelForImageInput();
+            autoSwitchModelForImageInput(true);
             toast.success('已自动切换到支持多图的模型');
           }
           
@@ -923,7 +925,7 @@ export function ImageGenerator() {
           toast.success(`已添加${imageFiles.length}张图片到合并列表`);
           
           // 🔄 自动切换模型（如果需要）
-          setTimeout(() => autoSwitchModelForImageInput(), 100);        } else {
+          autoSwitchModelForImageInput(true);        } else {
           // 单张图片
           const file = imageFiles[0];
           if (supportsMultipleImages()) {
@@ -938,7 +940,7 @@ export function ImageGenerator() {
             // 不支持多图的模型，检查是否需要累积
             if (selectedImage || selectedImages.length > 0) {
               // 如果已有图片，切换到多图模式并累积
-              autoSwitchModelForImageInput();
+              autoSwitchModelForImageInput(true);
               const allImages = selectedImage ? [selectedImage, file] : [...selectedImages, file];
               setSelectedImages(allImages);
               setSelectedImage(null); // 清空单图选择
