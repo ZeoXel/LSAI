@@ -663,10 +663,24 @@ export function ImageGenerator() {
           formData.append('image', image);
         });
         
-        response = await fetch("/api/images/edit", {
-          method: "POST",
-          body: formData,
-        });
+        // 🔧 修复：添加与后端API匹配的超时时间（5分钟）
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 300秒
+        
+        try {
+          response = await fetch("/api/images/edit", {
+            method: "POST",
+            body: formData,
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+            throw new Error('图像编辑请求超时，请稍后重试');
+          }
+          throw fetchError;
+        }
       } else {
         // 普通图像生成请求
         response = await fetch("/api/images/generate", {
