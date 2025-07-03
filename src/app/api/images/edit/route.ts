@@ -141,8 +141,22 @@ export async function POST(request: NextRequest) {
       if (data.data && Array.isArray(data.data) && data.data.length > 0) {
         const result = data.data[0];
         
+        // 详细调试信息
+        console.log('详细数据检查:', {
+          hasData: !!data.data,
+          dataIsArray: Array.isArray(data.data),
+          dataLength: data.data?.length || 0,
+          firstItem: result,
+          b64_json_exists: !!result.b64_json,
+          b64_json_type: typeof result.b64_json,
+          b64_json_length: result.b64_json?.length || 0,
+          url_exists: !!result.url,
+          allKeys: Object.keys(result)
+        });
+        
         // 检查是否有base64数据
-        if (result.b64_json) {
+        if (result.b64_json && typeof result.b64_json === 'string' && result.b64_json.length > 0) {
+          console.log('成功：使用b64_json数据');
           // 将base64转换为data URL
           const imageUrl = `data:image/png;base64,${result.b64_json}`;
           
@@ -153,7 +167,8 @@ export async function POST(request: NextRequest) {
             model: 'gpt-image-1',
             editType: 'image_edit'
           });
-        } else if (result.url) {
+        } else if (result.url && typeof result.url === 'string' && result.url.length > 0) {
+          console.log('成功：使用URL数据');
           // 如果返回的是URL
           return NextResponse.json({
             success: true,
@@ -163,8 +178,11 @@ export async function POST(request: NextRequest) {
             editType: 'image_edit'
           });
         }
+        
+        console.log('错误：无有效的图像数据');
       }
 
+      console.log('错误：数据结构不符合预期');
       throw new Error('API返回数据格式异常');
 
     } catch (fetchError: unknown) {
