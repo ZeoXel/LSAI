@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createContext, useContext } from 'react';
 import { StorageService } from './types';
+import { ChatMessage } from './types';
 
 interface AppState {
   // 侧边栏状态
@@ -16,6 +17,11 @@ interface AppState {
   // 文件管理
   currentFiles: string[];
   
+  // 🔧 新增：当前对话状态管理
+  currentChatConversationId: string | null;
+  currentChatMessages: ChatMessage[];
+  currentChatModel: string;
+  
   // 动作函数
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
@@ -23,6 +29,12 @@ interface AppState {
   setHistoryType: (type: string) => void;
   addFile: (file: string) => void;
   removeFile: (file: string) => void;
+  
+  // 🔧 新增：对话状态管理函数
+  setChatConversationId: (id: string | null) => void;
+  setChatMessages: (messages: ChatMessage[]) => void;
+  setChatModel: (model: string) => void;
+  clearChatState: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -32,6 +44,11 @@ export const useAppStore = create<AppState>((set) => ({
   selectedTool: 'chat',
   historyType: 'chat',
   currentFiles: [],
+  
+  // 🔧 新增：对话状态初始值
+  currentChatConversationId: null,
+  currentChatMessages: [],
+  currentChatModel: 'gpt-4o',
   
   // 动作函数
   toggleLeftSidebar: () => 
@@ -55,6 +72,23 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({ 
       currentFiles: state.currentFiles.filter(f => f !== file) 
     })),
+  
+  // 🔧 新增：对话状态管理函数
+  setChatConversationId: (id: string | null) => 
+    set({ currentChatConversationId: id }),
+  
+  setChatMessages: (messages: ChatMessage[]) => 
+    set({ currentChatMessages: messages }),
+  
+  setChatModel: (model: string) => 
+    set({ currentChatModel: model }),
+  
+  clearChatState: () => 
+    set({ 
+      currentChatConversationId: null, 
+      currentChatMessages: [], 
+      currentChatModel: 'gpt-4o' 
+    }),
 }));
 
 export const StorageContext = createContext<StorageService | null>(null);
