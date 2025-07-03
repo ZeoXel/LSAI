@@ -18,7 +18,7 @@ import {
   X,
   Wand2
 } from "lucide-react";
-import { cn, imageStorageManager, safeParseResponse } from "@/lib/utils";
+import { cn, imageStorageManager, safeParseResponse, imageCompression } from "@/lib/utils";
 import { useHistoryStore } from "@/lib/history-store";
 import { PromptOptimizer } from "@/components/ai/PromptOptimizer";
 import { useAppStore, useStorage } from "@/lib/store";
@@ -594,9 +594,39 @@ export function ImageGenerator() {
         return;
       }
     }    // 检查是否有图像输入（支持文生图和图生图两种模式）
-    const hasImageInput = selectedImage || selectedImages.length > 0;
+    let hasImageInput = selectedImage || selectedImages.length > 0;
     const isImageEdit = selectedModel === "gpt-image-1" && hasImageInput;
     const isMultiImageModel = supportsMultipleImages() && hasImageInput;
+
+    // 🗜️ 图片压缩处理
+    let processedImages: File[] = [];
+    if (hasImageInput) {
+      try {
+        const imagesToProcess = selectedImages.length > 0 ? selectedImages : [selectedImage!];
+        
+        // 检查是否需要压缩
+        if (imageCompression.needsCompression(imagesToProcess)) {
+          console.log('🗜️ 检测到图片过大，开始压缩...');
+          toast.info('图片较大，正在压缩以适应Vercel限制...');
+          
+          const totalSizeBefore = imagesToProcess.reduce((sum, file) => sum + file.size, 0);
+          console.log(`压缩前总大小: ${imageCompression.formatFileSize(totalSizeBefore)}`);
+          
+          processedImages = await imageCompression.compressImages(imagesToProcess);
+          
+          const totalSizeAfter = processedImages.reduce((sum, file) => sum + file.size, 0);
+          console.log(`压缩后总大小: ${imageCompression.formatFileSize(totalSizeAfter)}`);
+          
+          toast.success(`图片压缩完成: ${imageCompression.formatFileSize(totalSizeBefore)} → ${imageCompression.formatFileSize(totalSizeAfter)}`);
+        } else {
+          processedImages = imagesToProcess;
+        }
+      } catch (error) {
+        console.error('图片压缩失败:', error);
+        toast.error(`图片压缩失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        return;
+      }
+    }
 
     const newRecord: GenerationRecord = {
       id: Date.now().toString(),
@@ -611,6 +641,15 @@ export function ImageGenerator() {
     setRecords(prev => [...prev, newRecord]);
     setPrompt("");
 
+    // 🕐 显示长时间处理提示
+    if (isImageEdit || isMultiImageModel) {
+      if (selectedModel === "gpt-image-1") {
+        toast.info("🎨 GPT Image Editor 处理中，通常需要1-2分钟，请耐心等待...", { duration: 5000 });
+      } else {
+        toast.info("⚡ 图像编辑处理中，可能需要较长时间，请耐心等待...", { duration: 3000 });
+      }
+    }
+
     try {
       let response;
       
@@ -619,15 +658,10 @@ export function ImageGenerator() {
         const formData = new FormData();
         formData.append('prompt', newRecord.prompt);
         
-        // 如果有多张图片，发送多张
-        if (selectedImages.length > 0) {
-          selectedImages.forEach((image, index) => {
-            formData.append('image', image);
-          });
-        } else if (selectedImage) {
-          // 兼容单图模式
-          formData.append('image', selectedImage);
-        }
+        // 使用压缩后的图片
+        processedImages.forEach((image, index) => {
+          formData.append('image', image);
+        });
         
         response = await fetch("/api/images/edit", {
           method: "POST",

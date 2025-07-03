@@ -466,3 +466,128 @@ export const smartLocalStorage = {
     }
   }
 };
+
+/**
+ * 图片压缩工具
+ */
+const MAX_FILE_SIZE = 3 * 1024 * 1024; // 3MB per file (留1MB buffer)
+const MAX_TOTAL_SIZE = 3 * 1024 * 1024; // 3MB total
+
+export const imageCompression = {
+  // Vercel限制
+  MAX_FILE_SIZE,
+  MAX_TOTAL_SIZE,
+  
+  /**
+   * 压缩单张图片
+   */
+  async compressImage(file: File, maxSize: number = MAX_FILE_SIZE): Promise<File> {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        try {
+          // 计算压缩比例
+          let { width, height } = img;
+          const maxDimension = 1024; // 最大尺寸限制
+          
+          if (width > maxDimension || height > maxDimension) {
+            const ratio = Math.min(maxDimension / width, maxDimension / height);
+            width *= ratio;
+            height *= ratio;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          if (!ctx) {
+            reject(new Error('无法创建Canvas上下文'));
+            return;
+          }
+          
+          // 绘制图片
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // 尝试不同质量级别直到文件大小合适
+          const tryCompress = (quality: number) => {
+            canvas.toBlob((blob) => {
+              if (!blob) {
+                reject(new Error('图片压缩失败'));
+                return;
+              }
+              
+              if (blob.size <= maxSize || quality <= 0.1) {
+                // 创建新的File对象
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now()
+                });
+                resolve(compressedFile);
+              } else {
+                // 继续降低质量
+                tryCompress(quality - 0.1);
+              }
+            }, 'image/jpeg', quality);
+          };
+          
+          // 从0.8质量开始尝试
+          tryCompress(0.8);
+          
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      img.onerror = () => reject(new Error('图片加载失败'));
+      img.src = URL.createObjectURL(file);
+    });
+  },
+  
+  /**
+   * 批量压缩图片
+   */
+  async compressImages(files: File[]): Promise<File[]> {
+    const maxTotalSize = MAX_TOTAL_SIZE;
+    const maxFileSize = Math.min(MAX_FILE_SIZE, maxTotalSize / files.length);
+    
+    const compressedFiles: File[] = [];
+    
+    for (const file of files) {
+      try {
+        const compressed = await imageCompression.compressImage(file, maxFileSize);
+        compressedFiles.push(compressed);
+      } catch (error) {
+        console.error(`压缩图片 ${file.name} 失败:`, error);
+        throw new Error(`压缩图片 ${file.name} 失败`);
+      }
+    }
+    
+    // 检查总大小
+    const totalSize = compressedFiles.reduce((sum, file) => sum + file.size, 0);
+    if (totalSize > maxTotalSize) {
+      throw new Error('图片压缩后总大小仍然过大，请减少图片数量');
+    }
+    
+    return compressedFiles;
+  },
+  
+  /**
+   * 检查文件是否需要压缩
+   */
+  needsCompression(files: File[]): boolean {
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    return totalSize > MAX_TOTAL_SIZE || 
+           files.some(file => file.size > MAX_FILE_SIZE);
+  },
+  
+  /**
+   * 格式化文件大小
+   */
+  formatFileSize(bytes: number): string {
+    if (bytes < 1024) return bytes + 'B';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + 'KB';
+    return Math.round(bytes / (1024 * 1024) * 10) / 10 + 'MB';
+  }
+};

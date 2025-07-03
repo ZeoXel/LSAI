@@ -158,9 +158,9 @@ function HistoryCard({ record, onLoadConversation }: {
             
             {/* 内容预览 */}
             {getLastMessage() && (
-              <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                {getLastMessage()}
-              </p>
+            <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+              {getLastMessage()}
+            </p>
             )}
             
             {/* 标签 */}
@@ -168,22 +168,22 @@ function HistoryCard({ record, onLoadConversation }: {
               // 过滤掉"工作流"标签
               const filteredTags = record.tags.filter(tag => tag !== '工作流');
               return filteredTags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
+              <div className="flex flex-wrap gap-1 mb-2">
                   {filteredTags.slice(0, 3).map((tag, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center gap-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded"
-                    >
-                      <Tag className="h-2 w-2" />
-                      {tag}
-                    </span>
-                  ))}
+                  <span
+                    key={index}
+                    className="inline-flex items-center gap-1 text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded"
+                  >
+                    <Tag className="h-2 w-2" />
+                    {tag}
+                  </span>
+                ))}
                   {filteredTags.length > 3 && (
-                    <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                       +{filteredTags.length - 3}
-                    </span>
-                  )}
-                </div>
+                  </span>
+                )}
+              </div>
               );
             })()}
             

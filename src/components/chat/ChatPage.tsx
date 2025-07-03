@@ -578,7 +578,7 @@ export function ChatPage() {
               role: msg.role as 'user' | 'assistant' | 'system',
               content: combinedText,
             });
-          }
+        }
         }
       }
 
@@ -600,8 +600,8 @@ export function ChatPage() {
             });
           } else {
             // 只有图片的情况
-            apiMessages.push({
-              role: 'user',
+      apiMessages.push({
+        role: 'user',
               content: '请分析这张图片',
             });
           }
@@ -1160,37 +1160,37 @@ export function ChatPage() {
                 <h4 className="text-xs font-medium text-muted-foreground mb-2 px-1">AI 模型</h4>
                 <div className="grid grid-cols-2 gap-2">
                   {AI_MODELS.filter(model => model.type === 'ai').map((model) => (
-                    <Button
-                      key={model.id}
-                      variant={selectedModel === model.id ? "secondary" : "outline"}
-                      className={cn(
-                        "h-auto p-3 justify-start text-left",
-                        selectedModel === model.id && "ring-2 ring-primary/20"
-                      )}
-                      onClick={() => {
-                        setSelectedModel(model.id);
-                        setShowModelSelector(false);
+                <Button
+                  key={model.id}
+                  variant={selectedModel === model.id ? "secondary" : "outline"}
+                  className={cn(
+                    "h-auto p-3 justify-start text-left",
+                    selectedModel === model.id && "ring-2 ring-primary/20"
+                  )}
+                  onClick={() => {
+                    setSelectedModel(model.id);
+                    setShowModelSelector(false);
                         
                         // 切换到AI模型，退出工作流模式
                         setIsWorkflowMode(false);
                         setCurrentWorkflow(null);
                         setWorkflowStep(null);
-                      }}
-                    >
-                      <div className="flex items-center gap-2 w-full">
-                        <span className="text-lg">{model.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm">{model.name}</div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {model.description}
-                          </div>
-                        </div>
-                        {selectedModel === model.id && (
-                          <Zap className="h-4 w-4 text-primary flex-shrink-0" />
-                        )}
+                  }}
+                >
+                  <div className="flex items-center gap-2 w-full">
+                    <span className="text-lg">{model.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm">{model.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {model.description}
                       </div>
-                    </Button>
-                  ))}
+                    </div>
+                    {selectedModel === model.id && (
+                      <Zap className="h-4 w-4 text-primary flex-shrink-0" />
+                    )}
+                  </div>
+                </Button>
+              ))}
                 </div>
               </div>
 
