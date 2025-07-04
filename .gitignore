@@ -103,3 +103,6 @@ uploads/
 *.tmp
 test-*.tsx
 test-*.ts
+
+# Sentry Config File
+.env.sentry-build-plugin

@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from "@sentry/nextjs";
 
 export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
-    const prompt = formData.get('prompt') as string;
+  return await Sentry.withServerActionInstrumentation(
+    "images-edit",
+    { recordResponse: true },
+    async () => {
+      try {
+        const formData = await request.formData();
+        const prompt = formData.get('prompt') as string;
     
     // 获取所有图片文件（支持多图）
     const imageFiles = formData.getAll('image') as File[];
@@ -63,10 +68,15 @@ export async function POST(request: NextRequest) {
     });
 
     // 调用DMXAPI图像编辑接口
+    const apiKey = process.env.DMXAPI_KEY || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('DMXAPI密钥未配置，请在.env.local文件中设置DMXAPI_KEY');
+    }
+
     const response = await fetch('https://www.dmxapi.cn/v1/images/edits', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer sk-G3oRkZnME9LinvDBWQpgyr8eLWmi1cinSWDm5iowGr7IWxXp',
+        'Authorization': `Bearer ${apiKey}`,
         'User-Agent': 'DMXAPI/1.0.0 (https://www.dmxapi.cn)',
       },
       body: apiFormData,
@@ -127,19 +137,29 @@ export async function POST(request: NextRequest) {
 
     throw new Error('API返回数据格式异常');
 
-  } catch (error: unknown) {
-    console.error('图像编辑API错误:', error);
-    
-    const errorObj = error as { message?: string };
-    
-    return NextResponse.json(
-      { 
-        error: '图像编辑失败',
-        details: errorObj.message || 'Unknown error'
-      },
-      { status: 500 }
-    );
-  }
+      } catch (error: unknown) {
+        console.error('图像编辑API错误:', error);
+        
+        const errorObj = error as { message?: string };
+        
+        // 记录错误到Sentry
+        Sentry.setContext("error_details", {
+          message: errorObj.message,
+          endpoint: "images/edit"
+        });
+        Sentry.setTag("api_endpoint", "image_edit");
+        Sentry.captureException(error);
+        
+        return NextResponse.json(
+          { 
+            error: '图像编辑失败',
+            details: errorObj.message || 'Unknown error'
+          },
+          { status: 500 }
+        );
+      }
+    }
+  );
 }
 
 // 健康检查端点

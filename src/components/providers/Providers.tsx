@@ -10,6 +10,7 @@ import { StorageContext } from '@/lib/store';
 import { SupabaseStorageService } from '@/lib/supabase-storage';
 import { localStorageService } from '@/lib/local-storage';
 import type { StorageService } from '@/lib/types';
+import { ErrorBoundary } from '@/components/error/ErrorBoundary';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -93,25 +94,27 @@ export function Providers({ children }: ProvidersProps) {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <StorageContext.Provider value={storageService}>
-        {dbError && (
-          <div className="fixed top-4 right-4 z-50 max-w-sm bg-muted/10 border border-muted/20 text-muted-foreground px-4 py-3 rounded-lg">
-            <div className="flex items-center justify-between">
-              <p className="text-sm">{dbError}</p>
-              <button
-                onClick={handleClearDatabase}
-                className="ml-2 text-xs bg-muted/20 hover:bg-muted/30 px-2 py-1 rounded"
-              >
-                清理数据库
-              </button>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <StorageContext.Provider value={storageService}>
+          {dbError && (
+            <div className="fixed top-4 right-4 z-50 max-w-sm bg-muted/10 border border-muted/20 text-muted-foreground px-4 py-3 rounded-lg">
+              <div className="flex items-center justify-between">
+                <p className="text-sm">{dbError}</p>
+                <button
+                  onClick={handleClearDatabase}
+                  className="ml-2 text-xs bg-muted/20 hover:bg-muted/30 px-2 py-1 rounded"
+                >
+                  清理数据库
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-        {children}
-      </StorageContext.Provider>
-      <Toaster position="bottom-right" richColors />
-      <ConfirmDialogComponent />
-    </QueryClientProvider>
+          )}
+          {children}
+        </StorageContext.Provider>
+        <Toaster position="bottom-right" richColors />
+        <ConfirmDialogComponent />
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 } 

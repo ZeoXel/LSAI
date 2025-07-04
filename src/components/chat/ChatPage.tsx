@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { useHistoryStore } from "@/lib/history-store";
 import { useConversationStore } from "@/lib/conversation-store";
 import { ChatMessage, TextContent, ImageContent } from "@/lib/types";
-import { useStorage, useAppStore } from "@/lib/store";
+import { useStorage } from "@/lib/store";
 import { convertFileToBase64, isValidImageFile, compressImage, safeParseResponse, type CompressOptions } from "@/lib/utils";
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { toast } from 'sonner';
@@ -98,17 +98,19 @@ export function ChatPage() {
     addMessage, 
     clearConversation
   } = useConversationStore();
+
+  // 🔧 会话对话ID管理 - 用于分组存储
+  const getCurrentSessionConversationId = (): string | null => {
+    return sessionStorage.getItem('currentChatConversationId');
+  };
   
-  // 🔧 使用全局状态管理对话状态，确保工具切换时对话不丢失
-  const { 
-    currentChatConversationId, 
-    currentChatMessages, 
-    currentChatModel,
-    setChatConversationId,
-    setChatMessages,
-    setChatModel,
-    clearChatState
-  } = useAppStore();
+  const setCurrentSessionConversationId = (id: string | null) => {
+    if (id) {
+      sessionStorage.setItem('currentChatConversationId', id);
+    } else {
+      sessionStorage.removeItem('currentChatConversationId');
+    }
+  };
 
   // 自动滚动到底部的函数
   const scrollToBottom = () => {
@@ -144,16 +146,36 @@ export function ChatPage() {
     }
   }, [isTyping]);
   
-  // 🔧 页面加载时恢复对话状态（支持工具切换后的状态保持）
+  // 🔧 页面加载时恢复对话状态（支持热重载和工具切换）
   useEffect(() => {
     const restoreConversationState = async () => {
       try {
-        // 🔧 优先从全局状态恢复对话（支持工具切换）
-        if (currentChatConversationId && currentChatMessages.length > 0) {
-          setMessages(currentChatMessages);
-          setSelectedModel(currentChatModel);
-          console.log('✅ 从全局状态恢复对话:', currentChatConversationId, `包含${currentChatMessages.length}条消息`);
-          return;
+        // 🔧 检查sessionStorage中是否有当前对话ID
+        const sessionConversationId = getCurrentSessionConversationId();
+        
+        if (sessionConversationId) {
+          // 🔧 优先使用session ID直接恢复对话，不要清理
+          console.log('🔧 检测到session ID，尝试恢复对话:', sessionConversationId);
+          
+          try {
+            const conversation = await storageService.getRecord(sessionConversationId);
+            if (conversation) {
+              // 🔧 成功恢复对话状态
+              const messages = conversation.content?.messages || conversation.messages || [];
+              if (messages.length > 0) {
+                setMessages(messages);
+                setSelectedModel(conversation.modelName);
+                console.log('✅ 会话对话状态已恢复:', conversation.title, `包含${messages.length}条消息`);
+                return; // 成功恢复，直接返回
+              }
+            }
+          } catch (sessionError) {
+            console.warn('⚠️ 使用session ID恢复对话失败:', sessionError);
+          }
+          
+          // 🔧 session ID对应的对话无效，清理并继续fallback流程
+          console.log('🔧 session ID无效，清理并使用fallback');
+          setCurrentSessionConversationId(null);
         }
         
         // 🔧 fallback: 尝试从存储服务获取活跃对话
@@ -161,31 +183,34 @@ export function ChatPage() {
         if (conversation) {
           setMessages(conversation.messages);
           setSelectedModel(conversation.modelName);
-          // 同步到全局状态
-          setChatConversationId(conversation.id);
-          setChatMessages(conversation.messages);
-          setChatModel(conversation.modelName);
           console.log('✅ 活跃对话状态已恢复:', conversation.title);
         } else {
           // 🔧 没有任何对话时，显示初始问候语
-          const initialMessages: ChatMessage[] = [
+          setMessages([
             {
               id: "1",
-              role: "assistant" as const,
+              role: "assistant",
               content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
               timestamp: Date.now(),
             },
-          ];
-          setMessages(initialMessages);
-          setChatMessages(initialMessages);
+          ]);
         }
       } catch (error) {
         console.error('⚠️ 恢复对话状态失败:', error);
+        // 🔧 出错时显示默认消息
+        setMessages([
+          {
+            id: "1",
+            role: "assistant",
+            content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
+            timestamp: Date.now(),
+          },
+        ]);
       }
     };
     
     restoreConversationState();
-  }, [setMessages, currentChatConversationId, currentChatMessages, currentChatModel, setChatConversationId, setChatMessages, setChatModel]);
+  }, [setMessages]);
 
   // 监听历史记录点击跳转事件
   useEffect(() => {
@@ -196,31 +221,27 @@ export function ChatPage() {
           // 🔧 直接从存储服务加载对话数据
           const conversation = await storageService.getRecord(conversationId);
           if (conversation) {
-            // 🔧 设置当前会话对话ID到全局状态
-            setChatConversationId(conversationId);
+            // 🔧 设置当前会话对话ID
+            setCurrentSessionConversationId(conversationId);
             
             // 🔧 加载消息到UI - 避免fallback，直接使用历史消息
             const messages = conversation.content?.messages || conversation.messages || [];
             if (messages.length > 0) {
               setMessages(messages);
-              setChatMessages(messages);
             } else {
               // 只有在真的没有消息时才显示默认消息
-              const defaultMessages: ChatMessage[] = [
+              setMessages([
                 {
                   id: "1",
-                  role: "assistant" as const,
+                  role: "assistant",
                   content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
                   timestamp: Date.now(),
                 },
-              ];
-              setMessages(defaultMessages);
-              setChatMessages(defaultMessages);
+              ]);
             }
             
             // 🔧 设置模型
             setSelectedModel(conversation.modelName);
-            setChatModel(conversation.modelName);
             
             // 🔧 清空选中的图片
             setSelectedImages([]);
@@ -378,7 +399,7 @@ export function ChatPage() {
       
       // 🔧 工作流不立即保存，等执行完成后统一保存
       // 清空当前会话ID，因为工作流不会立即保存
-      setChatConversationId(null);
+      setCurrentSessionConversationId(null);
       console.log('✅ 工作流已启动，等待执行完成后统一保存');
       
       // 获取第一步并显示提示
@@ -475,24 +496,21 @@ export function ChatPage() {
       clearConversation();
       setSelectedImages([]);
       // 🔧 清空当前会话对话ID，开始新的对话分组
-      clearChatState();
+      setCurrentSessionConversationId(null);
       
       // 🔧 只有非工作流模式才显示问候语
       if (!isWorkflow) {
-        const initialMessages: ChatMessage[] = [
+        setMessages([
           {
             id: "1",
-            role: "assistant" as const,
+            role: "assistant",
             content: "你好！我是AI助手，很高兴为您服务。有什么我可以帮助您的吗？",
             timestamp: Date.now(),
           },
-        ];
-        setMessages(initialMessages);
-        setChatMessages(initialMessages);
+        ]);
       } else {
         // 工作流模式清空消息，不显示默认问候语
         setMessages([]);
-        setChatMessages([]);
       }
       
       loadRecords(); // 刷新历史记录列表
@@ -671,10 +689,6 @@ export function ChatPage() {
       };
 
       addMessage(aiResponse);
-      
-      // 🔧 同步消息到全局状态，确保工具切换时不丢失
-      const updatedMessages = [...messages, newUserMessage, aiResponse];
-      setChatMessages(updatedMessages);
 
       // 立即隐藏"思考中"气泡
       setIsTyping(false);
@@ -685,7 +699,7 @@ export function ChatPage() {
         
         if (hasUserContent) {
           // 🔧 获取当前会话的对话ID
-          let conversationId = currentChatConversationId;
+          let conversationId = getCurrentSessionConversationId();
           
           if (!conversationId) {
             // 🔧 创建新对话记录
@@ -704,8 +718,8 @@ export function ChatPage() {
             });
             conversationId = newConversation.id;
             
-            // 🔧 保存到全局状态，后续消息都会添加到这个对话中
-            setChatConversationId(conversationId);
+            // 🔧 保存到会话存储，后续消息都会添加到这个对话中
+            setCurrentSessionConversationId(conversationId);
             
             console.log('✅ 创建新对话记录:', { id: conversationId, title });
           }
@@ -1183,7 +1197,6 @@ export function ChatPage() {
                       )}
                       onClick={() => {
                         setSelectedModel(model.id);
-                        setChatModel(model.id);
                         setShowModelSelector(false);
                         
                         // 切换到AI模型，退出工作流模式

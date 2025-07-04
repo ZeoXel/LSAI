@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as Sentry from "@sentry/nextjs";
 
 // 图像生成请求接口
 interface ImageGenerationRequest {
@@ -22,9 +23,21 @@ interface ErrorResponse {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body: ImageGenerationRequest = await request.json();
-    const { prompt, model = 'seedream-3.0', size = '1024x1024' } = body;
+  return await Sentry.withServerActionInstrumentation(
+    "images-generate",
+    { recordResponse: true },
+    async () => {
+      try {
+        const body: ImageGenerationRequest = await request.json();
+        const { prompt, model = 'seedream-3.0', size = '1024x1024' } = body;
+
+        // 添加Sentry上下文
+        Sentry.setContext("image_generation", {
+          model,
+          size,
+          promptLength: prompt.length,
+          endpoint: "generate"
+        });
 
     // 验证输入
     if (!prompt || !prompt.trim()) {
@@ -43,10 +56,15 @@ export async function POST(request: NextRequest) {
     };
 
     // 调用DMXAPI图像生成接口
+    const apiKey = process.env.DMXAPI_KEY || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('DMXAPI密钥未配置，请在.env.local文件中设置DMXAPI_KEY');
+    }
+
     const response = await fetch('https://www.dmxapi.cn/v1/images/generations', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer sk-G3oRkZnME9LinvDBWQpgyr8eLWmi1cinSWDm5iowGr7IWxXp',
+        'Authorization': `Bearer ${apiKey}`,
         'Accept': 'application/json',
         'User-Agent': 'DMXAPI/1.0.0 (https://www.dmxapi.cn)',
         'Content-Type': 'application/json',
@@ -92,19 +110,29 @@ export async function POST(request: NextRequest) {
     console.log('✅ API最终返回:', JSON.stringify(result, null, 2));
     return NextResponse.json(result);
 
-  } catch (error: unknown) {
-    console.error('Image generation API error:', error);
-    
-    const errorObj = error as { message?: string };
-    
-    return NextResponse.json(
-      { 
-        error: '图像生成失败',
-        details: errorObj.message || 'Unknown error'
-      },
-      { status: 500 }
-    );
-  }
+      } catch (error: unknown) {
+        console.error('Image generation API error:', error);
+        
+        const errorObj = error as { message?: string };
+        
+        // 记录错误到Sentry
+        Sentry.setContext("error_details", {
+          message: errorObj.message,
+          endpoint: "images/generate"
+        });
+        Sentry.setTag("api_endpoint", "image_generation");
+        Sentry.captureException(error);
+        
+        return NextResponse.json(
+          { 
+            error: '图像生成失败',
+            details: errorObj.message || 'Unknown error'
+          },
+          { status: 500 }
+        );
+      }
+    }
+  );
 }
 
 // 健康检查端点
