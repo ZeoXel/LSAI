@@ -98,6 +98,47 @@ export function ChatPage() {
     addMessage, 
     clearConversation
   } = useConversationStore();
+  
+  // 🔧 消息队列管理状态
+  const [messageQueue, setMessageQueue] = useState<ChatMessage[]>([]);
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
+
+  // 🔧 消息队列处理函数
+  const addToMessageQueue = (message: ChatMessage) => {
+    setMessageQueue(prev => [...prev, message]);
+  };
+  
+  const processMessageQueue = async () => {
+    if (isProcessingQueue || messageQueue.length === 0) return;
+    
+    setIsProcessingQueue(true);
+    
+    try {
+      // 按时间戳排序确保顺序
+      const sortedQueue = [...messageQueue].sort((a, b) => a.timestamp - b.timestamp);
+      
+      // 逐个添加消息到界面
+      for (const message of sortedQueue) {
+        addMessage(message);
+        // 短暂延迟确保渲染顺序
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      // 清空队列
+      setMessageQueue([]);
+    } catch (error) {
+      console.error('处理消息队列失败:', error);
+    } finally {
+      setIsProcessingQueue(false);
+    }
+  };
+  
+  // 监听队列变化，自动处理
+  useEffect(() => {
+    if (messageQueue.length > 0 && !isProcessingQueue) {
+      processMessageQueue();
+    }
+  }, [messageQueue, isProcessingQueue]);
 
   // 🔧 会话对话ID管理 - 用于分组存储
   const getCurrentSessionConversationId = (): string | null => {
@@ -576,15 +617,17 @@ export function ChatPage() {
         }
       }
 
-      // 创建用户消息
+      // 🔧 创建用户消息 - 使用更精确的ID生成
+      const userTimestamp = Date.now();
       const newUserMessage: ChatMessage = {
-        id: Date.now().toString(),
+        id: `user_${userTimestamp}_${Math.random().toString(36).substr(2, 9)}`,
         role: "user",
         content: messageContent,
-        timestamp: Date.now(),
+        timestamp: userTimestamp,
       };
 
-      addMessage(newUserMessage);
+      // 🔧 使用消息队列确保顺序
+      addToMessageQueue(newUserMessage);
 
       // 构建API请求消息格式 - 简化逻辑
       const apiMessages: ChatCompletionMessageParam[] = [];
@@ -676,19 +719,21 @@ export function ChatPage() {
         throw new Error(data.error || `请求失败 (${response.status})`);
       }
 
-      // 添加AI回复
+      // 🔧 添加AI回复 - 确保时间戳晚于用户消息
       if (!data.message || !data.message.content) {
         throw new Error('AI回复内容为空');
       }
 
+      const aiTimestamp = userTimestamp + 100; // 确保AI回复时间戳晚于用户消息
       const aiResponse: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: `assistant_${aiTimestamp}_${Math.random().toString(36).substr(2, 9)}`,
         role: "assistant",
         content: data.message.content,
-        timestamp: Date.now(),
+        timestamp: aiTimestamp,
       };
 
-      addMessage(aiResponse);
+      // 🔧 使用消息队列确保顺序
+      addToMessageQueue(aiResponse);
 
       // 立即隐藏"思考中"气泡
       setIsTyping(false);
@@ -741,16 +786,18 @@ export function ChatPage() {
     } catch (error: unknown) {
       console.error('Chat error:', error);
       
-      // 显示错误消息
+      // 🔧 显示错误消息 - 使用队列确保顺序
       const errorObj = error as { message?: string };
+      const errorTimestamp = Date.now();
       const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: `error_${errorTimestamp}_${Math.random().toString(36).substr(2, 9)}`,
         role: "assistant",
         content: `❌ 抱歉，发生了错误：${errorObj.message || '网络连接失败，请稍后重试'}`,
-        timestamp: Date.now(),
+        timestamp: errorTimestamp,
       };
 
-      addMessage(errorMessage);
+      // 🔧 使用消息队列确保顺序
+      addToMessageQueue(errorMessage);
       // 错误时也要隐藏"思考中"气泡
       setIsTyping(false);
     }

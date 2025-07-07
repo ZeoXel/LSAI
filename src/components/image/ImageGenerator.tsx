@@ -255,29 +255,31 @@ export function ImageGenerator() {
       toast.success("已开始新的生成对话");
     };
 
-    // 监听图像生成完成事件 - 从历史记录或其他地方触发
+    // 🔧 监听图像生成完成事件 - 优化状态更新逻辑
     const handleImageGenerationComplete = (event: CustomEvent) => {
       const { taskId, imageUrl, success, error } = event.detail;
       
       if (taskId) {
-        // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
-        const currentRecords = loadRecordsFromStorage();
-        const updatedRecords = currentRecords.map(record => {
-          if (record.id === taskId) {
-            console.log(`收到生成完成通知: ${taskId}, 成功: ${success}`);
-            return {
-              ...record,
-              isGenerating: false,
-              imageUrl: success ? imageUrl : undefined,
-              error: success ? undefined : (error || '生成失败')
-            };
-          }
-          return record;
-        });
+        console.log(`收到生成完成通知: ${taskId}, 成功: ${success}`);
         
-        // 保存到localStorage并更新组件状态
-        saveRecordsToStorage(updatedRecords);
-        setRecords(updatedRecords);
+        // 🔧 优化状态更新：直接更新React状态，然后同步到localStorage
+        setRecords(prevRecords => {
+          const updatedRecords = prevRecords.map(record => {
+            if (record.id === taskId) {
+              return {
+                ...record,
+                isGenerating: false,
+                imageUrl: success ? imageUrl : undefined,
+                error: success ? undefined : (error || '生成失败')
+              };
+            }
+            return record;
+          });
+          
+          // 同步保存到localStorage
+          saveRecordsToStorage(updatedRecords);
+          return updatedRecords;
+        });
       }
     };
 
@@ -582,6 +584,13 @@ export function ImageGenerator() {
       return;
     }
 
+    // 🔧 检查并发任务限制
+    const activeGenerations = records.filter(record => record.isGenerating);
+    if (activeGenerations.length >= 3) {
+      toast.error("最多同时进行3个生成任务，请等待完成后再试");
+      return;
+    }
+
 
     // 🔍 检查模型兼容性
     const compatibility = checkModelCompatibility();
@@ -598,16 +607,29 @@ export function ImageGenerator() {
     const isImageEdit = selectedModel === "gpt-image-1" && hasImageInput;
     const isMultiImageModel = supportsMultipleImages() && hasImageInput;
 
+    // 🔧 生成更可靠的唯一ID，避免并发冲突
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substr(2, 9);
     const newRecord: GenerationRecord = {
-      id: Date.now().toString(),
+      id: `img_${timestamp}_${randomSuffix}`,
       prompt: prompt.trim(),
       model: selectedModel,
       size: selectedSize,
-      timestamp: new Date(),
+      timestamp: new Date(timestamp),
       isGenerating: true,
       sourceImageUrl: isImageEdit && selectedImage ? URL.createObjectURL(selectedImage) : undefined
     };
 
+    // 🔧 添加记录并清空输入，同时添加详细日志
+    console.log(`🚀 开始生成图像任务: ${newRecord.id}`, {
+      prompt: newRecord.prompt,
+      model: newRecord.model,
+      size: newRecord.size,
+      hasImageInput: hasImageInput,
+      isImageEdit: isImageEdit,
+      isMultiImageModel: isMultiImageModel
+    });
+    
     setRecords(prev => [...prev, newRecord]);
     setPrompt("");
 
@@ -618,6 +640,7 @@ export function ImageGenerator() {
         // 图像编辑/多图合并请求
         const formData = new FormData();
         formData.append('prompt', newRecord.prompt);
+        formData.append('model', selectedModel); // 🔧 添加模型参数
         
         // 如果有多张图片，发送多张
         if (selectedImages.length > 0) {
@@ -697,17 +720,17 @@ export function ImageGenerator() {
         throw new Error("图像生成失败：图像URL无效");
       }
 
-      // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
-      const currentRecords = loadRecordsFromStorage();
-      const updatedRecords = currentRecords.map(record => 
-        record.id === newRecord.id 
-          ? { ...record, imageUrl: imageUrl, isGenerating: false }
-          : record
-      );
-      saveRecordsToStorage(updatedRecords);
-
-      // 更新组件状态（如果组件还存在）
-      setRecords(updatedRecords);
+      // 🔧 优化状态更新：直接更新React状态，然后同步到localStorage
+      setRecords(prevRecords => {
+        const updatedRecords = prevRecords.map(record => 
+          record.id === newRecord.id 
+            ? { ...record, imageUrl: imageUrl, isGenerating: false }
+            : record
+        );
+        // 同步保存到localStorage
+        saveRecordsToStorage(updatedRecords);
+        return updatedRecords;
+      });
 
       // 触发生成完成事件通知
       window.dispatchEvent(new CustomEvent('imageGenerationComplete', {
@@ -779,17 +802,17 @@ export function ImageGenerator() {
     } catch (error) {
       console.error("生成错误:", error);
       
-      // 直接更新localStorage中的记录为错误状态（防止组件卸载时状态丢失）
-      const currentRecords = loadRecordsFromStorage();
-      const updatedRecords = currentRecords.map(record => 
-        record.id === newRecord.id 
-          ? { ...record, error: error instanceof Error ? error.message : "生成失败", isGenerating: false }
-          : record
-      );
-      saveRecordsToStorage(updatedRecords);
-
-      // 更新组件状态（如果组件还存在）
-      setRecords(updatedRecords);
+      // 🔧 优化错误状态更新：直接更新React状态，然后同步到localStorage
+      setRecords(prevRecords => {
+        const updatedRecords = prevRecords.map(record => 
+          record.id === newRecord.id 
+            ? { ...record, error: error instanceof Error ? error.message : "生成失败", isGenerating: false }
+            : record
+        );
+        // 同步保存到localStorage
+        saveRecordsToStorage(updatedRecords);
+        return updatedRecords;
+      });
 
       // 触发生成失败事件通知
       window.dispatchEvent(new CustomEvent('imageGenerationComplete', {
@@ -976,7 +999,9 @@ export function ImageGenerator() {
               </div>
             )}
 
-            {records.map((record, index) => (
+            {records
+              .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) // 🔧 按时间升序排序（旧到新）
+              .map((record, index) => (
               <div key={record.id} className="space-y-4">
                 {/* 用户输入 */}
                 <motion.div

@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
       try {
         const formData = await request.formData();
         const prompt = formData.get('prompt') as string;
+        const model = formData.get('model') as string || 'flux-kontext-pro'; // 🔧 获取模型参数，默认使用快速模型
     
     // 获取所有图片文件（支持多图）
     const imageFiles = formData.getAll('image') as File[];
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
     // 准备发送给DMXAPI的FormData
     const apiFormData = new FormData();
     apiFormData.append('prompt', prompt.trim());
+    apiFormData.append('model', model); // 🔧 传递模型参数给DMXAPI
     
     // 添加所有图片文件
     imageFiles.forEach((file) => {
@@ -58,6 +60,7 @@ export async function POST(request: NextRequest) {
 
     console.log('发送图像编辑请求:', {
       prompt: prompt.trim(),
+      model: model, // 🔧 记录使用的模型
       imageCount: imageFiles.length,
       files: imageFiles.map((file, index) => ({
         index,
@@ -120,7 +123,7 @@ export async function POST(request: NextRequest) {
           success: true,
           images: [{ url: imageUrl }],
           prompt: prompt,
-          model: 'gpt-image-1',
+          model: model, // 🔧 返回实际使用的模型
           editType: 'image_edit'
         });
       } else if (result.url) {
@@ -129,7 +132,7 @@ export async function POST(request: NextRequest) {
           success: true,
           images: [{ url: result.url }],
           prompt: prompt,
-          model: 'gpt-image-1',
+          model: model, // 🔧 返回实际使用的模型
           editType: 'image_edit'
         });
       }

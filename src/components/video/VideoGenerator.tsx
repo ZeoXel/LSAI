@@ -335,28 +335,31 @@ export function VideoGenerator() {
     };
 
     // 监听来自其他组件的视频生成完成通知
+    // 🔧 监听视频生成完成事件 - 优化状态更新逻辑
     const handleVideoGenerationComplete = (event: CustomEvent) => {
       const { taskId, videoUrl, success, error } = event.detail;
       
       if (taskId) {
-        // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
-        const currentRecords = loadRecordsFromStorage();
-        const updatedRecords = currentRecords.map(record => {
-          if (record.id === taskId) {
-            console.log(`收到视频生成完成通知: ${taskId}, 成功: ${success}`);
-            return {
-              ...record,
-              isGenerating: false,
-              videoUrl: success ? videoUrl : undefined,
-              error: success ? undefined : (error || '生成失败')
-            };
-          }
-          return record;
-        });
+        console.log(`收到视频生成完成通知: ${taskId}, 成功: ${success}`);
         
-        // 保存到localStorage并更新组件状态
-        saveRecordsToStorage(updatedRecords);
-        setRecords(updatedRecords);
+        // 🔧 优化状态更新：直接更新React状态，然后同步到localStorage
+        setRecords(prevRecords => {
+          const updatedRecords = prevRecords.map(record => {
+            if (record.id === taskId) {
+              return {
+                ...record,
+                isGenerating: false,
+                videoUrl: success ? videoUrl : undefined,
+                error: success ? undefined : (error || '生成失败')
+              };
+            }
+            return record;
+          });
+          
+          // 同步保存到localStorage
+          saveRecordsToStorage(updatedRecords);
+          return updatedRecords;
+        });
       }
     };
 
@@ -565,19 +568,39 @@ export function VideoGenerator() {
       return;
     }
 
+    // 🔧 检查并发任务限制
+    const activeGenerations = records.filter(record => record.isGenerating);
+    if (activeGenerations.length >= 2) {
+      toast.error("最多同时进行2个视频生成任务，请等待完成后再试");
+      return;
+    }
+
+    // 🔧 生成更可靠的唯一ID，避免并发冲突
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substr(2, 9);
     const newRecord: GenerationRecord = {
-      id: Date.now().toString(),
+      id: `video_${timestamp}_${randomSuffix}`,
       prompt: prompt.trim(),
       model: selectedModel,
       mode: selectedMode,
       aspectRatio: selectedAspectRatio,
       duration: selectedDuration,
-      timestamp: new Date(),
+      timestamp: new Date(timestamp),
       isGenerating: true,
       sourceImageUrl: selectedImage ? URL.createObjectURL(selectedImage) : undefined,
-
     };
 
+    // 🔧 添加记录并清空输入，同时添加详细日志
+    console.log(`🚀 开始生成视频任务: ${newRecord.id}`, {
+      prompt: newRecord.prompt,
+      model: newRecord.model,
+      mode: newRecord.mode,
+      aspectRatio: newRecord.aspectRatio,
+      duration: newRecord.duration,
+      hasImage: !!selectedImage,
+      hasMultipleImages: selectedImages.length > 0
+    });
+    
     setRecords(prev => [...prev, newRecord]);
     setPrompt("");
     setIsGenerating(true);
@@ -659,22 +682,22 @@ export function VideoGenerator() {
         throw new Error(data.error || "视频生成失败");
       }
 
-      // 直接更新localStorage中的记录（防止组件卸载时状态丢失）
-      const currentRecords = loadRecordsFromStorage();
-      const updatedRecords = currentRecords.map(record => 
-        record.id === newRecord.id 
-          ? { 
-              ...record, 
-              videoUrl: data.videoUrl,
-              thumbnailUrl: data.thumbnailUrl,
-              isGenerating: false 
-            }
-          : record
-      );
-      saveRecordsToStorage(updatedRecords);
-
-      // 更新组件状态（如果组件还存在）
-      setRecords(updatedRecords);
+      // 🔧 优化状态更新：直接更新React状态，然后同步到localStorage
+      setRecords(prevRecords => {
+        const updatedRecords = prevRecords.map(record => 
+          record.id === newRecord.id 
+            ? { 
+                ...record, 
+                videoUrl: data.videoUrl,
+                thumbnailUrl: data.thumbnailUrl,
+                isGenerating: false 
+              }
+            : record
+        );
+        // 同步保存到localStorage
+        saveRecordsToStorage(updatedRecords);
+        return updatedRecords;
+      });
 
       // 触发生成完成事件通知
       window.dispatchEvent(new CustomEvent('videoGenerationComplete', {
@@ -752,17 +775,17 @@ export function VideoGenerator() {
     } catch (error) {
       console.error("生成错误:", error);
       
-      // 直接更新localStorage中的记录为错误状态（防止组件卸载时状态丢失）
-      const currentRecords = loadRecordsFromStorage();
-      const updatedRecords = currentRecords.map(record => 
-        record.id === newRecord.id 
-          ? { ...record, error: error instanceof Error ? error.message : "生成失败", isGenerating: false }
-          : record
-      );
-      saveRecordsToStorage(updatedRecords);
-
-      // 更新组件状态（如果组件还存在）
-      setRecords(updatedRecords);
+      // 🔧 优化错误状态更新：直接更新React状态，然后同步到localStorage
+      setRecords(prevRecords => {
+        const updatedRecords = prevRecords.map(record => 
+          record.id === newRecord.id 
+            ? { ...record, error: error instanceof Error ? error.message : "生成失败", isGenerating: false }
+            : record
+        );
+        // 同步保存到localStorage
+        saveRecordsToStorage(updatedRecords);
+        return updatedRecords;
+      });
 
       // 触发生成失败事件通知
       window.dispatchEvent(new CustomEvent('videoGenerationComplete', {
@@ -984,7 +1007,9 @@ export function VideoGenerator() {
               </div>
             )}
 
-            {records.map((record, index) => (
+            {records
+              .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()) // 🔧 按时间升序排序（旧到新）
+              .map((record, index) => (
               <div key={record.id} className="space-y-4">
                 {/* 用户输入 - 完全复制ImageGenerator */}
                 <motion.div
