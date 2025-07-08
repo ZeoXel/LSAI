@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import * as Sentry from "@sentry/nextjs";
 
 export async function POST(request: NextRequest) {
-  return await Sentry.withServerActionInstrumentation(
-    "images-edit",
-    { recordResponse: true },
-    async () => {
   try {
     const formData = await request.formData();
     const prompt = formData.get('prompt') as string;
-        const model = formData.get('model') as string || 'flux-kontext-pro'; // 🔧 获取模型参数，默认使用快速模型
+    const model = formData.get('model') as string || 'flux-kontext-pro'; // 🔧 获取模型参数，默认使用快速模型
     
     // 获取所有图片文件（支持多图）
     const imageFiles = formData.getAll('image') as File[];
@@ -144,14 +139,6 @@ export async function POST(request: NextRequest) {
     console.error('图像编辑API错误:', error);
     
     const errorObj = error as { message?: string };
-        
-        // 记录错误到Sentry
-        Sentry.setContext("error_details", {
-          message: errorObj.message,
-          endpoint: "images/edit"
-        });
-        Sentry.setTag("api_endpoint", "image_edit");
-        Sentry.captureException(error);
     
     return NextResponse.json(
       { 
@@ -161,8 +148,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-    }
-  );
 }
 
 // 健康检查端点

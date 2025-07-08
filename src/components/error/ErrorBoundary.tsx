@@ -1,7 +1,6 @@
 "use client";
 
 import React from 'react';
-import * as Sentry from "@sentry/nextjs";
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { getSemanticColor } from '@/lib/design-system';
@@ -9,12 +8,11 @@ import { getSemanticColor } from '@/lib/design-system';
 interface ErrorBoundaryState {
   hasError: boolean;
   error?: Error;
-  errorId?: string;
 }
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
-  fallback?: React.ComponentType<{ error: Error; resetError: () => void; errorId?: string }>;
+  fallback?: React.ComponentType<{ error: Error; resetError: () => void }>;
 }
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
@@ -24,28 +22,21 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    // 捕获错误并发送到Sentry
-    const errorId = Sentry.captureException(error);
     return {
       hasError: true,
       error,
-      errorId,
     };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // 添加React错误信息到Sentry
-    Sentry.withScope((scope) => {
-      scope.setContext("react_error_info", {
-        componentStack: errorInfo.componentStack
-      });
-      scope.setTag("error_boundary", "react");
-      Sentry.captureException(error);
-    });
+    // 在开发模式下记录错误信息
+    if (process.env.NODE_ENV === 'development') {
+      console.error('ErrorBoundary caught an error:', error, errorInfo);
+    }
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: undefined, errorId: undefined });
+    this.setState({ hasError: false, error: undefined });
   };
 
   render() {
@@ -57,7 +48,6 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           <FallbackComponent
             error={this.state.error!}
             resetError={this.handleReset}
-            errorId={this.state.errorId}
           />
         );
       }
@@ -66,7 +56,6 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       return <DefaultErrorFallback 
         error={this.state.error!} 
         resetError={this.handleReset}
-        errorId={this.state.errorId}
       />;
     }
 
@@ -77,12 +66,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 // 默认错误回退组件
 function DefaultErrorFallback({ 
   error, 
-  resetError, 
-  errorId 
+  resetError 
 }: { 
   error: Error; 
   resetError: () => void; 
-  errorId?: string;
 }) {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -108,14 +95,8 @@ function DefaultErrorFallback({
         </h2>
         
         <p className="text-sm text-muted-foreground mb-4">
-          我们已经记录了这个错误，开发团队会尽快修复。
+          请尝试刷新页面或重试操作。
         </p>
-        
-        {errorId && (
-          <p className="text-xs text-muted-foreground mb-4">
-            错误ID: <code className="bg-muted px-1 rounded">{errorId}</code>
-          </p>
-        )}
         
         <div className="space-y-2">
           <Button 
@@ -153,7 +134,7 @@ function DefaultErrorFallback({
 // 高阶组件，用于包装其他组件
 export function withErrorBoundary<P extends object>(
   Component: React.ComponentType<P>,
-  fallback?: React.ComponentType<{ error: Error; resetError: () => void; errorId?: string }>
+  fallback?: React.ComponentType<{ error: Error; resetError: () => void }>
 ) {
   const WrappedComponent = (props: P) => (
     <ErrorBoundary fallback={fallback}>
