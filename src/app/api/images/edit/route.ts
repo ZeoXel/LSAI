@@ -6,9 +6,9 @@ export async function POST(request: NextRequest) {
     "images-edit",
     { recordResponse: true },
     async () => {
-      try {
-        const formData = await request.formData();
-        const prompt = formData.get('prompt') as string;
+  try {
+    const formData = await request.formData();
+    const prompt = formData.get('prompt') as string;
         const model = formData.get('model') as string || 'flux-kontext-pro'; // 🔧 获取模型参数，默认使用快速模型
     
     // 获取所有图片文件（支持多图）
@@ -140,10 +140,10 @@ export async function POST(request: NextRequest) {
 
     throw new Error('API返回数据格式异常');
 
-      } catch (error: unknown) {
-        console.error('图像编辑API错误:', error);
-        
-        const errorObj = error as { message?: string };
+  } catch (error: unknown) {
+    console.error('图像编辑API错误:', error);
+    
+    const errorObj = error as { message?: string };
         
         // 记录错误到Sentry
         Sentry.setContext("error_details", {
@@ -152,15 +152,15 @@ export async function POST(request: NextRequest) {
         });
         Sentry.setTag("api_endpoint", "image_edit");
         Sentry.captureException(error);
-        
-        return NextResponse.json(
-          { 
-            error: '图像编辑失败',
-            details: errorObj.message || 'Unknown error'
-          },
-          { status: 500 }
-        );
-      }
+    
+    return NextResponse.json(
+      { 
+        error: '图像编辑失败',
+        details: errorObj.message || 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
     }
   );
 }

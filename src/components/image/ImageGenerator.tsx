@@ -67,7 +67,11 @@ interface GenerationRecord {
   imageUrl?: string;
   error?: string;
   isGenerating: boolean;
-  sourceImageUrl?: string; // 用于记录编辑源图片
+  sourceImageData?: {
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+  }; // 用于记录编辑源图片的元数据，不保存blob URL
 }
 
 // 持久化存储键名
@@ -102,7 +106,9 @@ export function ImageGenerator() {
   const [showEditTip, setShowEditTip] = useState(true); // 控制编辑提示的显示
   const [isDragOver, setIsDragOver] = useState(false); // 拖拽状态
   const [showPromptOptimizer, setShowPromptOptimizer] = useState(false); // 显示提示词优化器
-
+  
+  // 🔧 新增：图片URL缓存，用于管理当前会话的图片显示
+  const [imageUrlCache, setImageUrlCache] = useState<Map<string, string>>(new Map());
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const multiFileInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +118,54 @@ export function ImageGenerator() {
   // 检查当前模型是否支持多图片上传
   const supportsMultipleImages = () => {
     return selectedModel === "gpt-image-1" || selectedModel === "flux-kontext-pro";
+  };
+
+  // 🔧 优化的图片URL获取函数
+  const getSourceImageUrl = (record: GenerationRecord): string | null => {
+    // 检查缓存中是否有URL
+    const cachedUrl = imageUrlCache.get(record.id);
+    if (cachedUrl) {
+      return cachedUrl;
+    }
+    
+    // 向后兼容：检查是否有老的sourceImageUrl字段
+    const legacyUrl = (record as any).sourceImageUrl;
+    if (legacyUrl && legacyUrl.startsWith('blob:')) {
+      // 尝试验证blob URL是否仍然有效
+      try {
+        fetch(legacyUrl).then(() => {
+          // URL仍然有效，加入缓存
+          setImageUrlCache(prev => new Map(prev.set(record.id, legacyUrl)));
+        }).catch(() => {
+          // URL已失效，不做处理
+        });
+        return legacyUrl;
+      } catch {
+        return null;
+      }
+    }
+    
+    return null;
+  };
+
+  // 🔧 创建并缓存图片URL
+  const createAndCacheImageUrl = (recordId: string, file: File): string => {
+    const url = URL.createObjectURL(file);
+    setImageUrlCache(prev => new Map(prev.set(recordId, url)));
+    return url;
+  };
+
+  // 🔧 清理特定记录的图片URL
+  const cleanupImageUrl = (recordId: string) => {
+    const url = imageUrlCache.get(recordId);
+    if (url) {
+      URL.revokeObjectURL(url);
+      setImageUrlCache(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(recordId);
+        return newMap;
+      });
+    }
   };
 
   // 🧠 智能模型切换逻辑
@@ -204,13 +258,20 @@ export function ImageGenerator() {
     return () => clearInterval(cleanupInterval);
   }, []);
 
-  // 监听页面刷新，刷新时清空记录
+  // 🔧 监听真正的页面刷新/关闭，避免工具切换误触发
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      // 页面刷新时清空localStorage中的记录
-      localStorage.removeItem(IMAGE_GENERATOR_STORAGE_KEY);
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // 🔧 只在真正刷新页面时清空，避免组件切换误触发
+      if (e.type === 'beforeunload') {
+        // 给用户一个短暂的延迟，确认是真正的页面刷新
+        setTimeout(() => {
+          localStorage.removeItem(IMAGE_GENERATOR_STORAGE_KEY);
+          console.log('🧹 页面刷新，清空图像生成记录');
+        }, 100);
+      }
     };
 
+    // 只在真正的页面刷新时触发，不在组件切换时触发
     window.addEventListener('beforeunload', handleBeforeUnload);
     
     return () => {
@@ -221,13 +282,20 @@ export function ImageGenerator() {
   // 组件卸载时清理Blob URLs（如果有的话）
   useEffect(() => {
     return () => {
+      // 清理当前缓存的所有图片URL
+      imageUrlCache.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+      
+      // 清理records中的遗留blob URLs（向后兼容）
       records.forEach(record => {
-        if (record.sourceImageUrl && record.sourceImageUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(record.sourceImageUrl);
+        const legacyUrl = (record as any).sourceImageUrl;
+        if (legacyUrl && legacyUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(legacyUrl);
         }
       });
     };
-  }, []);
+  }, [imageUrlCache, records]);
 
   // 监听新建对话事件和生成状态同步
   useEffect(() => {
@@ -260,24 +328,24 @@ export function ImageGenerator() {
       const { taskId, imageUrl, success, error } = event.detail;
       
       if (taskId) {
-        console.log(`收到生成完成通知: ${taskId}, 成功: ${success}`);
+            console.log(`收到生成完成通知: ${taskId}, 成功: ${success}`);
         
         // 🔧 优化状态更新：直接更新React状态，然后同步到localStorage
         setRecords(prevRecords => {
           const updatedRecords = prevRecords.map(record => {
             if (record.id === taskId) {
-              return {
-                ...record,
-                isGenerating: false,
-                imageUrl: success ? imageUrl : undefined,
-                error: success ? undefined : (error || '生成失败')
-              };
-            }
-            return record;
-          });
-          
+            return {
+              ...record,
+              isGenerating: false,
+              imageUrl: success ? imageUrl : undefined,
+              error: success ? undefined : (error || '生成失败')
+            };
+          }
+          return record;
+        });
+        
           // 同步保存到localStorage
-          saveRecordsToStorage(updatedRecords);
+        saveRecordsToStorage(updatedRecords);
           return updatedRecords;
         });
       }
@@ -351,6 +419,62 @@ export function ImageGenerator() {
     const hasActiveGeneration = records.some(record => record.isGenerating);
     setIsGenerating(hasActiveGeneration);
   }, [records]);
+
+  // 🔧 验证并修复图像URL的函数
+  const validateAndFixImageUrl = async (record: GenerationRecord): Promise<string | null> => {
+    if (!record.imageUrl) return null;
+    
+    // 如果是有效的HTTP/HTTPS URL，直接返回
+    if (record.imageUrl.startsWith('http://') || record.imageUrl.startsWith('https://')) {
+      try {
+        // 验证URL是否仍然可用
+        const response = await fetch(record.imageUrl, { method: 'HEAD' });
+        if (response.ok) {
+          return record.imageUrl;
+        }
+      } catch (error) {
+        console.warn(`图片URL验证失败: ${record.imageUrl}`, error);
+      }
+    }
+    
+    // 如果是blob URL或失效URL，尝试恢复
+    return null;
+  };
+
+  // 🔧 自动验证和修复记录中的图片URL
+  useEffect(() => {
+    const validateImageUrls = async () => {
+      if (records.length === 0) return;
+      
+      let needsUpdate = false;
+      const updatedRecords = await Promise.all(
+        records.map(async (record) => {
+          if (record.imageUrl && !record.error && !record.isGenerating) {
+            const validUrl = await validateAndFixImageUrl(record);
+            if (!validUrl && record.imageUrl) {
+              console.warn(`发现失效的图片URL: ${record.id}`);
+              needsUpdate = true;
+              return {
+                ...record,
+                error: '图片链接已失效，请重新生成'
+              };
+            }
+          }
+          return record;
+        })
+      );
+      
+      if (needsUpdate) {
+        console.log('🔧 更新失效的图片记录');
+        setRecords(updatedRecords);
+        saveRecordsToStorage(updatedRecords);
+      }
+    };
+
+    // 延迟验证，避免阻塞初始渲染
+    const timer = setTimeout(validateImageUrls, 1000);
+    return () => clearTimeout(timer);
+  }, [records.length]); // 只在记录数量变化时验证
 
   // 处理单图片选择
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -610,15 +734,26 @@ export function ImageGenerator() {
     // 🔧 生成更可靠的唯一ID，避免并发冲突
     const timestamp = Date.now();
     const randomSuffix = Math.random().toString(36).substr(2, 9);
+    const recordId = `img_${timestamp}_${randomSuffix}`;
+    
     const newRecord: GenerationRecord = {
-      id: `img_${timestamp}_${randomSuffix}`,
+      id: recordId,
       prompt: prompt.trim(),
       model: selectedModel,
       size: selectedSize,
       timestamp: new Date(timestamp),
       isGenerating: true,
-      sourceImageUrl: isImageEdit && selectedImage ? URL.createObjectURL(selectedImage) : undefined
+      sourceImageData: isImageEdit && selectedImage ? {
+        fileName: selectedImage.name,
+        fileSize: selectedImage.size,
+        mimeType: selectedImage.type
+      } : undefined
     };
+
+    // 🔧 如果有源图片，创建并缓存blob URL
+    if (isImageEdit && selectedImage) {
+      createAndCacheImageUrl(recordId, selectedImage);
+    }
 
     // 🔧 添加记录并清空输入，同时添加详细日志
     console.log(`🚀 开始生成图像任务: ${newRecord.id}`, {
@@ -629,7 +764,7 @@ export function ImageGenerator() {
       isImageEdit: isImageEdit,
       isMultiImageModel: isMultiImageModel
     });
-    
+
     setRecords(prev => [...prev, newRecord]);
     setPrompt("");
 
@@ -723,12 +858,12 @@ export function ImageGenerator() {
       // 🔧 优化状态更新：直接更新React状态，然后同步到localStorage
       setRecords(prevRecords => {
         const updatedRecords = prevRecords.map(record => 
-          record.id === newRecord.id 
-            ? { ...record, imageUrl: imageUrl, isGenerating: false }
-            : record
-        );
+        record.id === newRecord.id 
+          ? { ...record, imageUrl: imageUrl, isGenerating: false }
+          : record
+      );
         // 同步保存到localStorage
-        saveRecordsToStorage(updatedRecords);
+      saveRecordsToStorage(updatedRecords);
         return updatedRecords;
       });
 
@@ -805,12 +940,12 @@ export function ImageGenerator() {
       // 🔧 优化错误状态更新：直接更新React状态，然后同步到localStorage
       setRecords(prevRecords => {
         const updatedRecords = prevRecords.map(record => 
-          record.id === newRecord.id 
-            ? { ...record, error: error instanceof Error ? error.message : "生成失败", isGenerating: false }
-            : record
-        );
+        record.id === newRecord.id 
+          ? { ...record, error: error instanceof Error ? error.message : "生成失败", isGenerating: false }
+          : record
+      );
         // 同步保存到localStorage
-        saveRecordsToStorage(updatedRecords);
+      saveRecordsToStorage(updatedRecords);
         return updatedRecords;
       });
 
@@ -1041,26 +1176,91 @@ export function ImageGenerator() {
                   
                   <div className="max-w-3xl bg-muted text-foreground rounded-lg p-4">
                     {record.isGenerating ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
-                          <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce delay-100" />
-                          <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce delay-200" />
+                      <div className="space-y-3">
+                        {/* 🔧 如果有源图片，显示源图片预览 */}
+                        {(() => {
+                          const sourceUrl = getSourceImageUrl(record);
+                          return sourceUrl ? (
+                            <div className="p-2 bg-background/50 rounded-lg">
+                              <div className="text-xs text-muted-foreground mb-2">📎 编辑源图片</div>
+                              <img
+                                src={sourceUrl}
+                                alt="源图片"
+                                className="max-w-32 h-auto rounded border opacity-70"
+                              />
+                            </div>
+                          ) : null;
+                        })()}
+                        
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
+                            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce delay-100" />
+                            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce delay-200" />
+                          </div>
+                          <span className="text-sm text-muted-foreground">正在生成图像...</span>
                         </div>
-                        <span className="text-sm text-muted-foreground">正在生成图像...</span>
                       </div>
                     ) : record.error ? (
-                      <div className="text-sm text-destructive">
-                        生成失败: {record.error}
+                      <div className="space-y-3">
+                        {/* 🔧 如果有源图片，显示源图片预览 */}
+                        {(() => {
+                          const sourceUrl = getSourceImageUrl(record);
+                          return sourceUrl ? (
+                            <div className="p-2 bg-background/50 rounded-lg">
+                              <div className="text-xs text-muted-foreground mb-2">📎 编辑源图片</div>
+                              <img
+                                src={sourceUrl}
+                                alt="源图片"
+                                className="max-w-32 h-auto rounded border opacity-70"
+                              />
+                            </div>
+                          ) : null;
+                        })()}
+                        
+                        <div className="text-sm text-destructive">
+                          生成失败: {record.error}
+                        </div>
                       </div>
-                                         ) : record.imageUrl ? (
+                    ) : record.imageUrl ? (
                        <div className="space-y-3">
+                         {/* 🔧 如果有源图片，显示源图片预览 */}
+                         {(() => {
+                           const sourceUrl = getSourceImageUrl(record);
+                           return sourceUrl ? (
+                             <div className="p-2 bg-background/50 rounded-lg">
+                               <div className="text-xs text-muted-foreground mb-2">📎 编辑源图片</div>
+                               <img
+                                 src={sourceUrl}
+                                 alt="源图片"
+                                 className="max-w-32 h-auto rounded border opacity-70"
+                               />
+                             </div>
+                           ) : null;
+                         })()}
+                         
                          <img
                            src={record.imageUrl}
                            alt={record.prompt}
                            className="max-w-full h-auto rounded-lg border shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
                            draggable={true}
                            onClick={() => handlePreviewImage(record.imageUrl!, record.prompt)}
+                           onError={(e) => {
+                             console.error(`图片加载失败: ${record.imageUrl}`);
+                             // 🔧 图片加载失败时的处理
+                             const target = e.target as HTMLImageElement;
+                             target.style.display = 'none';
+                             
+                             // 更新记录状态
+                             setRecords(prev => prev.map(r => 
+                               r.id === record.id 
+                                 ? { ...r, error: '图片加载失败，链接可能已过期' }
+                                 : r
+                             ));
+                           }}
+                           onLoad={() => {
+                             console.log(`✅ 图片加载成功: ${record.imageUrl}`);
+                           }}
                            onDragStart={(e) => {
                              e.dataTransfer.setData('text/plain', record.imageUrl!);
                              e.dataTransfer.setData('application/json', JSON.stringify({

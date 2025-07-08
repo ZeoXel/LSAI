@@ -187,17 +187,29 @@ export const safeParseResponse = async (response: Response): Promise<any> => {
 export const imageStorageManager = {
   save: (records: any[], storageKey: string): boolean => {
     try {
-      // 🔍 图片记录专用优化
+      // 🔍 图片记录专用优化 - 保持URL完整性
       const optimizeImageRecords = (originalRecords: any[]): any[] => {
-        const MAX_RECORDS = 15; // 限制图片记录数量
+        const MAX_RECORDS = 20; // 增加到20条记录
         
-        // 创建轻量级记录
-        const lightweightRecords = originalRecords.map(record => ({
-          ...record,
-          // 移除大字段，只保留标记
-          imageUrl: record.imageUrl ? 'has-image' : undefined,
-          sourceImageUrl: record.sourceImageUrl ? 'has-source' : undefined
-        }));
+        // 🔧 保持记录完整性，不破坏URL
+        const lightweightRecords = originalRecords.map(record => {
+          // 保持所有核心字段，只移除非必要的大字段
+          const optimized = {
+            id: record.id,
+            prompt: record.prompt,
+            model: record.model,
+            size: record.size,
+            timestamp: record.timestamp,
+            imageUrl: record.imageUrl, // 🔧 保持真实URL
+            error: record.error,
+            isGenerating: record.isGenerating,
+            sourceImageData: record.sourceImageData,
+            // 移除可能的大字段
+            sourceImageUrl: undefined // 这个已经迁移到sourceImageData
+          };
+          
+          return optimized;
+        });
         
         // 按时间排序，保留最新记录
         return lightweightRecords
@@ -219,7 +231,8 @@ export const imageStorageManager = {
           
           console.log(`💾 图片记录存储尝试 ${attempt}: ${data.length}条, ${(dataSize / 1024).toFixed(2)}KB`);
           
-          if (dataSize > 512 * 1024) { // 512KB 限制
+          // 🔧 增加存储限制到1MB
+          if (dataSize > 1024 * 1024) { // 1MB 限制
             throw new DOMException('数据过大', 'QuotaExceededError');
           }
           
@@ -232,17 +245,21 @@ export const imageStorageManager = {
             console.warn(`⚠️ 图片记录存储空间不足 (尝试 ${attempt}/${MAX_ATTEMPTS})`);
             
             if (attempt < MAX_ATTEMPTS) {
-              // 减少记录数量
+              // 减少记录数量，但保持URL完整性
               const reduced = data.slice(0, Math.max(1, Math.floor(data.length * 0.7)));
               return tryStore(reduced, attempt + 1);
             } else {
-              // 最小化存储
-              const minimal = data.slice(0, 3).map(item => ({
+              // 🔧 最小化存储但保留关键字段
+              const minimal = data.slice(0, 5).map(item => ({
                 id: item.id,
-                prompt: item.prompt ? item.prompt.substring(0, 30) : '',
+                prompt: item.prompt ? item.prompt.substring(0, 50) : '',
                 model: item.model,
+                size: item.size,
                 timestamp: item.timestamp,
-                isGenerating: item.isGenerating || false
+                imageUrl: item.imageUrl, // 🔧 保持真实URL
+                error: item.error,
+                isGenerating: item.isGenerating || false,
+                sourceImageData: item.sourceImageData
               }));
               
               try {
@@ -250,8 +267,8 @@ export const imageStorageManager = {
                 console.log('✅ 图片记录最小化保存成功');
                 return true;
               } catch (finalError) {
+                console.warn('🧹 图片记录存储完全失败，清空存储');
                 localStorage.removeItem(storageKey);
-                console.log('🧹 清空图片记录存储');
                 return false;
               }
             }
@@ -277,10 +294,13 @@ export const imageStorageManager = {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        return parsed.map((record: any) => ({
+        const validRecords = parsed.map((record: any) => ({
           ...record,
           timestamp: new Date(record.timestamp)
         })).filter((record: any) => record.id && record.model);
+        
+        console.log(`📥 加载图片记录: ${validRecords.length}条`);
+        return validRecords;
       }
     } catch (error) {
       console.error('加载图片记录失败:', error);

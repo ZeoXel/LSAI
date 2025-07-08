@@ -20,42 +20,9 @@ import { getWorkflowTemplate } from '@/lib/workflow-templates';
 // 临时存储拖拽的文件数据
 const dragFileCache = new Map<string, MediaFile & { record: HistoryRecord }>();
 
-// 🔧 媒体文件内存缓存
-const mediaFileCache = new Map<string, { blob: Blob; timestamp: number }>();
-const CACHE_EXPIRY_TIME = 10 * 60 * 1000; // 10分钟过期
-const MAX_CACHE_SIZE = 50; // 最多缓存50个文件
+import { mediaCache } from '@/lib/media-cache-manager';
 
-// 缓存管理函数
-const getCachedBlob = (url: string): Blob | null => {
-  const cached = mediaFileCache.get(url);
-  if (cached && Date.now() - cached.timestamp < CACHE_EXPIRY_TIME) {
-    return cached.blob;
-  }
-  if (cached) {
-    mediaFileCache.delete(url); // 删除过期缓存
-  }
-  return null;
-};
-
-const setCachedBlob = (url: string, blob: Blob) => {
-  // 如果缓存已满，删除最旧的条目
-  if (mediaFileCache.size >= MAX_CACHE_SIZE) {
-    const oldestKey = mediaFileCache.keys().next().value;
-    if (oldestKey) {
-      mediaFileCache.delete(oldestKey);
-    }
-  }
-  mediaFileCache.set(url, { blob, timestamp: Date.now() });
-};
-
-const clearExpiredCache = () => {
-  const now = Date.now();
-  for (const [key, value] of mediaFileCache.entries()) {
-    if (now - value.timestamp >= CACHE_EXPIRY_TIME) {
-      mediaFileCache.delete(key);
-    }
-  }
-};
+// 清理过期缓存函数现在由 mediaCache 内部管理
 
 // 获取类型对应的图标
 const getTypeIcon = (record: HistoryRecord) => {
@@ -525,19 +492,14 @@ function MediaGrid() {
             const files = await storageService.getFilesByHistoryId(record.id);
             
             for (const file of files) {
-              // 🔧 优先从缓存获取blob数据
+              // 🔧 使用增强的媒体缓存管理器
               try {
-                let blob = getCachedBlob(file.url);
-                if (!blob) {
-                  // 缓存未命中，从网络获取
-                  const response = await fetch(file.url);
-                  blob = await response.blob();
-                  setCachedBlob(file.url, blob); // 存入缓存
-                  console.log(`📥 已缓存文件: ${file.fileName}`);
+                const blob = await mediaCache.getMediaBlob(file.url, 'normal');
+                if (blob) {
+                  file.blob = blob;
                 } else {
-                  console.log(`🎯 缓存命中: ${file.fileName}`);
+                  console.warn(`获取文件 ${file.fileName} 的blob数据失败`);
                 }
-                file.blob = blob;
               } catch (blobError) {
                 console.warn(`获取文件 ${file.fileName} 的blob数据失败:`, blobError);
               }
@@ -556,9 +518,17 @@ function MediaGrid() {
         console.log('媒体文件加载完成:', allMediaFiles.length, '个文件');
         setMediaFiles(allMediaFiles);
         
-        // 🔧 清理过期缓存
-        clearExpiredCache();
-        console.log(`📊 缓存状态: ${mediaFileCache.size}/${MAX_CACHE_SIZE} 个文件`);
+        // 🔧 显示缓存统计信息
+        const cacheStats = mediaCache.getCacheStats();
+        console.log(`📊 缓存状态: ${cacheStats.memoryEntries}个文件, ${cacheStats.memorySize}, 命中率${cacheStats.hitRate.toFixed(1)}%`);
+        
+        // 🚀 预加载最新的3个文件（提升用户体验）
+        const recentFiles = allMediaFiles.slice(0, 3);
+        if (recentFiles.length > 0) {
+          setTimeout(() => {
+            mediaCache.preloadMedia(recentFiles, 'normal');
+          }, 1000); // 延迟1秒预加载，避免阻塞主要内容
+        }
       } catch (error) {
         console.error('加载媒体文件失败:', error);
       } finally {
