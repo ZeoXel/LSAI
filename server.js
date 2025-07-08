@@ -4,7 +4,7 @@ const next = require('next')
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = '0.0.0.0'  // 绑定所有网络接口
-const port = 3002  // 使用端口 3002
+const port = 3000  // 使用端口 3000
 
 // 创建Next.js应用实例
 const app = next({ dev, hostname, port })
