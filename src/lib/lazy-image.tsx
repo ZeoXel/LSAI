@@ -66,7 +66,16 @@ export function LazyImage({
     
     setIsLoading(true);
     try {
-      // 1. 首先尝试生成和加载缩略图
+      // 检查 mediaCache 是否可用（服务器端兼容性）
+      if (!mediaCache) {
+        // 在服务器端直接使用原始 URL
+        setImageUrl(file.url);
+        setIsLoaded(true);
+        onLoad?.();
+        return;
+      }
+
+      // 1. 优先加载缩略图（如果是 Supabase Storage）
       let thumbnailObjectUrl = '';
       if (file.url.includes('supabase.co/storage')) {
         const thumbUrl = mediaCache.getThumbnailUrl(file.url, 200);
@@ -254,6 +263,15 @@ export function LazyVideo({
     
     setIsLoading(true);
     try {
+      // 检查 mediaCache 是否可用（服务器端兼容性）
+      if (!mediaCache) {
+        // 在服务器端直接使用原始 URL
+        setVideoUrl(file.url);
+        setIsLoaded(true);
+        onLoad?.();
+        return;
+      }
+
       // 1. 优先加载缩略图
       if (file.thumbnailBlob) {
         const thumbUrl = URL.createObjectURL(file.thumbnailBlob);

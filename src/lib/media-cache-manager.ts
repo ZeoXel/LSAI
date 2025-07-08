@@ -29,12 +29,21 @@ class MediaCacheManager {
   private readonly PERSISTENT_CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7天过期
   
   constructor() {
-    this.initPersistentCache();
-    this.startCleanupInterval();
+    // 只在浏览器环境中初始化 IndexedDB
+    if (typeof window !== 'undefined' && 'indexedDB' in window) {
+      this.initPersistentCache();
+      this.startCleanupInterval();
+    }
   }
 
   // 🎯 初始化持久化缓存（IndexedDB）
   private async initPersistentCache(): Promise<void> {
+    // 再次检查浏览器环境
+    if (typeof window === 'undefined' || !('indexedDB' in window)) {
+      console.warn('IndexedDB 不可用，将使用内存缓存');
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, this.dbVersion);
       
@@ -199,7 +208,10 @@ class MediaCacheManager {
             resolve(null);
           }
         };
-        request.onerror = () => resolve(null);
+        
+        request.onerror = () => {
+          resolve(null);
+        };
       });
     } catch (error) {
       console.warn('持久化缓存读取失败:', error);
@@ -207,119 +219,150 @@ class MediaCacheManager {
     }
   }
 
-  // 🧹 内存限制管理
+  // 🧹 强制执行内存限制
   private enforceMemoryLimits(): void {
-    const entries = Array.from(this.memoryCache.entries());
+    // 检查缓存数量
+    if (this.memoryCache.size >= this.MAX_MEMORY_CACHE_SIZE) {
+      this.evictLeastUsed();
+    }
     
-    // 按大小排序，移除过大文件
-    const totalSize = entries.reduce((sum, [, entry]) => sum + entry.size, 0);
-    const maxSizeBytes = this.MAX_MEMORY_SIZE_MB * 1024 * 1024;
+    // 检查内存使用量
+    const totalSize = Array.from(this.memoryCache.values())
+      .reduce((total, entry) => total + entry.size, 0);
     
-    if (totalSize > maxSizeBytes || entries.length > this.MAX_MEMORY_CACHE_SIZE) {
-      // LRU清理：按访问时间和频率排序
-      entries.sort(([, a], [, b]) => {
-        const scoreA = a.accessCount / (Date.now() - a.lastAccess);
-        const scoreB = b.accessCount / (Date.now() - b.lastAccess);
-        return scoreA - scoreB; // 分数低的先删除
-      });
-      
-      // 删除一半缓存
-      const removeCount = Math.ceil(entries.length / 2);
-      for (let i = 0; i < removeCount; i++) {
-        this.memoryCache.delete(entries[i][0]);
-      }
-      
-      console.log(`🧹 内存缓存清理: 删除 ${removeCount} 个文件`);
+    if (totalSize > this.MAX_MEMORY_SIZE_MB * 1024 * 1024) {
+      this.evictLeastUsed();
     }
   }
 
-  // ⏰ 定期清理过期缓存
-  private startCleanupInterval(): void {
-    setInterval(() => {
-      this.cleanupExpiredCache();
-    }, 5 * 60 * 1000); // 5分钟清理一次
+  // 🗑️ 驱逐最少使用的缓存
+  private evictLeastUsed(): void {
+    const entries = Array.from(this.memoryCache.entries());
+    
+    // 按访问次数和最后访问时间排序
+    entries.sort(([, a], [, b]) => {
+      if (a.accessCount !== b.accessCount) {
+        return a.accessCount - b.accessCount;
+      }
+      return a.lastAccess - b.lastAccess;
+    });
+    
+    // 移除最少使用的20%
+    const toRemove = Math.ceil(entries.length * 0.2);
+    for (let i = 0; i < toRemove; i++) {
+      this.memoryCache.delete(entries[i][0]);
+    }
   }
 
+  // 🔄 启动清理定时器
+  private startCleanupInterval(): void {
+    // 只在浏览器环境中启动清理定时器
+    if (typeof window !== 'undefined') {
+      setInterval(() => {
+        this.cleanupExpiredCache();
+      }, 10 * 60 * 1000); // 每10分钟清理一次
+    }
+  }
+
+  // 🧹 清理过期缓存
   private cleanupExpiredCache(): void {
     const now = Date.now();
-    let removedCount = 0;
     
     // 清理内存缓存
     for (const [url, entry] of this.memoryCache.entries()) {
       if (now - entry.timestamp > this.CACHE_EXPIRY_TIME) {
         this.memoryCache.delete(url);
-        removedCount++;
       }
     }
     
-    if (removedCount > 0) {
-      console.log(`🧹 定期清理: 删除 ${removedCount} 个过期缓存`);
+    // 清理缩略图缓存
+    for (const [url, entry] of this.thumbnailCache.entries()) {
+      if (now - entry.timestamp > this.CACHE_EXPIRY_TIME) {
+        this.thumbnailCache.delete(url);
+      }
     }
   }
 
   // 🚀 预加载媒体文件
   async preloadMedia(files: MediaFile[], priority: 'high' | 'normal' | 'low' = 'low'): Promise<void> {
-    const preloadPromises = files.map(async (file) => {
-      try {
-        await this.getMediaBlob(file.url, priority);
-      } catch (error) {
-        console.warn(`预加载失败: ${file.fileName}`, error);
+    const promises = files.map(file => {
+      if (file.url) {
+        return this.getMediaBlob(file.url, priority);
       }
+      return Promise.resolve(null);
     });
     
-    await Promise.allSettled(preloadPromises);
-    console.log(`🚀 预加载完成: ${files.length} 个文件`);
+    await Promise.allSettled(promises);
   }
 
-  // 🎯 缩略图URL优化
+  // 🖼️ 获取缩略图URL
   getThumbnailUrl(originalUrl: string, size: number = 200): string {
-    // 检查是否是Supabase Storage URL
-    if (originalUrl.includes('supabase.co/storage')) {
-      // 添加缩略图参数
-      return `${originalUrl}?width=${size}&height=${size}&resize=cover&quality=80`;
+    const cachedThumbnail = this.thumbnailCache.get(originalUrl);
+    if (cachedThumbnail && this.isValidThumbnail(cachedThumbnail)) {
+      cachedThumbnail.lastAccess = Date.now();
+      return cachedThumbnail.url;
     }
     
-    // 对于其他URL，返回原始URL
-    return originalUrl;
+    // 生成缩略图URL（简化版）
+    const thumbnailUrl = `${originalUrl}?w=${size}&h=${size}&fit=crop`;
+    
+    this.thumbnailCache.set(originalUrl, {
+      url: thumbnailUrl,
+      timestamp: Date.now(),
+      lastAccess: Date.now()
+    });
+    
+    return thumbnailUrl;
   }
 
-  // 🔍 获取缓存统计信息
+  // 📊 获取缓存统计信息
   getCacheStats(): {
     memoryEntries: number;
     memorySize: string;
     hitRate: number;
   } {
-    const entries = Array.from(this.memoryCache.values());
-    const totalSize = entries.reduce((sum, entry) => sum + entry.size, 0);
-    const totalAccess = entries.reduce((sum, entry) => sum + entry.accessCount, 0);
+    const memoryEntries = this.memoryCache.size;
+    const memorySize = Array.from(this.memoryCache.values())
+      .reduce((total, entry) => total + entry.size, 0);
+    
+    const totalAccess = Array.from(this.memoryCache.values())
+      .reduce((total, entry) => total + entry.accessCount, 0);
     
     return {
-      memoryEntries: this.memoryCache.size,
-      memorySize: `${(totalSize / 1024 / 1024).toFixed(2)}MB`,
-      hitRate: totalAccess > 0 ? (entries.filter(e => e.accessCount > 1).length / entries.length) * 100 : 0
+      memoryEntries,
+      memorySize: `${(memorySize / 1024 / 1024).toFixed(2)} MB`,
+      hitRate: totalAccess > 0 ? (totalAccess / memoryEntries) : 0
     };
   }
 
-  // 🧹 清空所有缓存
+  // 🧹 清理所有缓存
   clearAllCache(): void {
     this.memoryCache.clear();
+    this.thumbnailCache.clear();
+    
+    // 清理持久化缓存
     if (this.persistentCache) {
       const transaction = this.persistentCache.transaction(['mediaCache', 'thumbnailCache'], 'readwrite');
       transaction.objectStore('mediaCache').clear();
       transaction.objectStore('thumbnailCache').clear();
     }
-    console.log('🧹 所有缓存已清空');
   }
 
-  // 工具方法
+  // 🔍 检查缓存条目是否有效
   private isValidEntry(entry: CacheEntry): boolean {
     return Date.now() - entry.timestamp < this.CACHE_EXPIRY_TIME;
   }
 
+  // 🔍 检查缩略图是否有效
+  private isValidThumbnail(entry: ThumbnailCacheEntry): boolean {
+    return Date.now() - entry.timestamp < this.CACHE_EXPIRY_TIME;
+  }
+
+  // 🔧 获取文件名
   private getFileName(url: string): string {
     return url.split('/').pop() || 'unknown';
   }
 }
 
-// 导出单例实例
-export const mediaCache = new MediaCacheManager(); 
+// 只在浏览器环境中创建实例
+export const mediaCache = typeof window !== 'undefined' ? new MediaCacheManager() : null; 

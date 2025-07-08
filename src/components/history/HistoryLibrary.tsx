@@ -494,11 +494,16 @@ function MediaGrid() {
             for (const file of files) {
               // 🔧 使用增强的媒体缓存管理器
               try {
-                const blob = await mediaCache.getMediaBlob(file.url, 'normal');
-                if (blob) {
-                  file.blob = blob;
+                // 检查 mediaCache 是否可用（服务器端兼容性）
+                if (mediaCache) {
+                  const blob = await mediaCache.getMediaBlob(file.url, 'normal');
+                  if (blob) {
+                    file.blob = blob;
+                  } else {
+                    console.warn(`获取文件 ${file.fileName} 的blob数据失败`);
+                  }
                 } else {
-                  console.warn(`获取文件 ${file.fileName} 的blob数据失败`);
+                  console.warn('MediaCache 不可用，跳过预加载');
                 }
               } catch (blobError) {
                 console.warn(`获取文件 ${file.fileName} 的blob数据失败:`, blobError);
@@ -519,14 +524,16 @@ function MediaGrid() {
         setMediaFiles(allMediaFiles);
         
         // 🔧 显示缓存统计信息
-        const cacheStats = mediaCache.getCacheStats();
-        console.log(`📊 缓存状态: ${cacheStats.memoryEntries}个文件, ${cacheStats.memorySize}, 命中率${cacheStats.hitRate.toFixed(1)}%`);
+        if (mediaCache) {
+          const cacheStats = mediaCache.getCacheStats();
+          console.log(`📊 缓存状态: ${cacheStats.memoryEntries}个文件, ${cacheStats.memorySize}, 命中率${cacheStats.hitRate.toFixed(1)}%`);
+        }
         
         // 🚀 预加载最新的3个文件（提升用户体验）
         const recentFiles = allMediaFiles.slice(0, 3);
-        if (recentFiles.length > 0) {
+        if (recentFiles.length > 0 && mediaCache) {
           setTimeout(() => {
-            mediaCache.preloadMedia(recentFiles, 'normal');
+            mediaCache!.preloadMedia(recentFiles, 'normal');
           }, 1000); // 延迟1秒预加载，避免阻塞主要内容
         }
       } catch (error) {
