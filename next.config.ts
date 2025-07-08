@@ -7,22 +7,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/chat/:path*',
-        destination: 'http://localhost:8000/api/:path*',
-      },
-      {
-        source: '/api/image/:path*',
-        destination: 'http://localhost:9000/api/:path*',
-      },
-      {
-        source: '/api/video/:path*',
-        destination: 'http://localhost:5001/api/:path*',
-      },
-    ];
-  },
   
   // 🔧 实验性功能
   experimental: {
