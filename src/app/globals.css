@@ -332,3 +332,17 @@
   50% { content: '..'; }
   75% { content: '...'; }
 }
+
+/* 🚀 骨架屏shimmer动画效果 */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}

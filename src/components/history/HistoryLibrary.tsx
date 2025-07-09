@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, MessageSquare, Image, Tag, Trash2, Calendar, Download, Eye, X, Edit, Video, Workflow } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,8 @@ import { useAppStore } from '@/lib/store';
 import { toast } from 'sonner';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { getWorkflowTemplate } from '@/lib/workflow-templates';
+import { FixedSizeGrid as Grid } from 'react-window';
+import { MediaGridSkeleton, HistoryListSkeleton } from '@/components/ui/skeleton';
 
 // 临时存储拖拽的文件数据
 const dragFileCache = new Map<string, MediaFile & { record: HistoryRecord }>();
@@ -23,6 +25,254 @@ const dragFileCache = new Map<string, MediaFile & { record: HistoryRecord }>();
 import { mediaCache } from '@/lib/media-cache-manager';
 
 // 清理过期缓存函数现在由 mediaCache 内部管理
+
+// 🚀 虚拟滚动媒体项组件
+function VirtualizedMediaItem({ 
+  file, 
+  onPreview, 
+  onDelete, 
+  thumbnailsLoading 
+}: {
+  file: MediaFile & { record: HistoryRecord };
+  onPreview: (file: MediaFile & { record: HistoryRecord }) => Promise<void>;
+  onDelete: (file: MediaFile & { record: HistoryRecord }) => Promise<void>;
+  thumbnailsLoading: boolean;
+}) {
+  const { setSelectedTool } = useAppStore();
+  const dragFileCache = useMemo(() => new Map<string, MediaFile & { record: HistoryRecord }>(), []);
+
+  const handleEdit = useCallback(async (file: MediaFile & { record: HistoryRecord }) => {
+    try {
+      setSelectedTool('image');
+      
+      setTimeout(() => {
+        const editEvent = new CustomEvent('editImageFromHistory', {
+          detail: {
+            imageBlob: file.blob,
+            fileName: file.fileName,
+            originalPrompt: file.record.metadata?.originalPrompt || file.record.title
+          }
+        });
+        window.dispatchEvent(editEvent);
+      }, 100);
+      
+      toast.success("已切换到图像生成器，可以开始编辑图片");
+    } catch (error) {
+      console.error('编辑图片失败:', error);
+      toast.error('编辑图片失败');
+    }
+  }, [setSelectedTool]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="relative group aspect-square bg-muted rounded-lg overflow-hidden"
+    >
+      {/* 媒体内容 - 智能分层显示：优先缩略图，按需加载完整图片 */}
+      {file.mimeType?.startsWith('image/') && (file.thumbnailBlob || file.blob) ? (
+        <div className="relative w-full h-full">
+          <img
+            src={URL.createObjectURL(file.thumbnailBlob || file.blob!)}
+            alt={file.record.title}
+            className={cn(
+              "w-full h-full object-cover cursor-grab active:cursor-grabbing group-hover:scale-105 transition-transform duration-200",
+              // 缩略图时添加轻微模糊效果，暗示这是预览图
+              file.thumbnailBlob && !file.blob ? "filter blur-[0.5px]" : ""
+            )}
+            draggable={true}
+            onClick={async (e) => {
+              // 只有在没有拖拽的情况下才触发预览
+              if (!e.defaultPrevented) {
+                await onPreview(file);
+              }
+            }}
+            onDragStart={(e) => {
+              // 设置拖拽数据 - 直接使用现有的URL
+              const imageUrl = e.currentTarget.src;
+              const dragId = `history-${Date.now()}`;
+              
+              // 将文件数据存储到缓存中
+              dragFileCache.set(dragId, file);
+              
+              e.dataTransfer.setData('text/plain', imageUrl);
+              e.dataTransfer.setData('application/json', JSON.stringify({
+                type: 'history-image',
+                imageUrl: imageUrl,
+                fileName: file.fileName,
+                recordTitle: file.record.title,
+                dragId: dragId
+              }));
+              
+              // 设置拖拽效果
+              e.dataTransfer.effectAllowed = 'copy';
+              console.log('开始拖拽历史记录图片:', file.fileName);
+            }}
+            onDragEnd={() => {
+              // 清理缓存
+              setTimeout(() => {
+                dragFileCache.clear();
+              }, 1000);
+              console.log('拖拽结束');
+            }}
+            title="点击预览，拖拽到输入框使用此图片"
+          />
+          
+
+        </div>
+      ) : file.mimeType?.startsWith('video/') ? (
+        // 视频显示逻辑 - 修复缩略图显示
+        <div className="relative w-full h-full">
+          {file.thumbnailBlob ? (
+            // 优先显示缩略图
+            <img
+              src={URL.createObjectURL(file.thumbnailBlob)}
+              alt={file.record.title}
+              className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-200"
+              onClick={async (e) => {
+                if (!e.defaultPrevented) {
+                  await onPreview(file);
+                }
+              }}
+              title="点击预览完整视频"
+            />
+          ) : file.blob ? (
+            // 如果没有缩略图，显示视频第一帧
+            <video
+              src={URL.createObjectURL(file.blob)}
+              className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-200"
+              preload="metadata"
+              onClick={async (e) => {
+                if (!e.defaultPrevented) {
+                  await onPreview(file);
+                }
+              }}
+              title="点击预览视频"
+            />
+          ) : (
+            // 视频占位符
+            <div className="w-full h-full bg-muted flex items-center justify-center">
+              <Video className="w-8 h-8 text-muted-foreground" />
+            </div>
+          )}
+          {/* 视频播放图标覆盖层 */}
+          <div 
+            className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors cursor-pointer"
+            onClick={async (e) => {
+              if (!e.defaultPrevented) {
+                await onPreview(file);
+              }
+            }}
+            title="点击预览完整视频"
+          >
+            <div className="w-8 h-8 bg-white/80 rounded-full flex items-center justify-center">
+              <Video className="w-4 h-4 text-black ml-0.5" />
+            </div>
+          </div>
+        </div>
+      ) : (
+        // 其他文件类型的占位符
+        <div className="w-full h-full bg-muted flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-6 h-6 bg-muted-foreground/20 rounded mx-auto mb-1"></div>
+            <p className="text-xs text-muted-foreground">
+              {file.fileName.split('.').pop()?.toUpperCase()}
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {/* 底部信息 */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pr-8">
+        <p className="text-white text-xs truncate">
+          {file.record.title}
+        </p>
+        <p className="text-white/70 text-xs">
+          {new Date(file.record.createdAt).toLocaleDateString()}
+        </p>
+      </div>
+      
+      {/* 删除按钮 */}
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={async (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          await onDelete(file);
+        }}
+        className="absolute bottom-2 right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
+        title="删除图片"
+      >
+        <Trash2 className="h-3 w-3" />
+      </Button>
+    </motion.div>
+  );
+}
+
+// 🚀 优化的媒体网格组件（先修复显示问题，再优化性能）
+function VirtualizedMediaGrid({
+  mediaFiles,
+  onPreview,
+  onDelete,
+  previewFile,
+  isPreviewOpen,
+  onClosePreview,
+  thumbnailsLoading
+}: {
+  mediaFiles: (MediaFile & { record: HistoryRecord })[];
+  onPreview: (file: MediaFile & { record: HistoryRecord }) => Promise<void>;
+  onDelete: (file: MediaFile & { record: HistoryRecord }) => Promise<void>;
+  previewFile: (MediaFile & { record: HistoryRecord }) | null;
+  isPreviewOpen: boolean;
+  onClosePreview: () => void;
+  thumbnailsLoading: boolean;
+}) {
+  const { showConfirmDialog, ConfirmDialogComponent } = useConfirmDialog();
+
+  // 如果没有媒体文件，显示空状态
+  if (mediaFiles.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="text-center">
+          <Image className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">暂无媒体内容</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            生成图片或视频后会自动保存在这里
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <ScrollArea className="w-full h-full">
+      {/* 修复的网格布局 - 3项一行，支持滚动 */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4">
+        {mediaFiles.map((file, index) => (
+          <div key={`${file.record.id}-${file.fileName}-${index}`} className="aspect-square">
+            <VirtualizedMediaItem
+              file={file}
+              onPreview={onPreview}
+              onDelete={onDelete}
+              thumbnailsLoading={thumbnailsLoading}
+            />
+          </div>
+        ))}
+      </div>
+      
+      {/* 图片预览模态框 */}
+      <ImagePreviewModal
+        file={previewFile}
+        isOpen={isPreviewOpen}
+        onClose={onClosePreview}
+      />
+      
+      {/* 确认对话框 */}
+      <ConfirmDialogComponent />
+    </ScrollArea>
+  );
+}
 
 // 获取类型对应的图标
 const getTypeIcon = (record: HistoryRecord) => {
@@ -407,8 +657,8 @@ function ImagePreviewModal({
   );
 }
 
-// 媒体网格组件
-function MediaGrid() {
+// 🚀 渲染优化：媒体网格组件
+const MediaGrid = React.memo(function MediaGrid() {
   const [mediaFiles, setMediaFiles] = useState<(MediaFile & { record: HistoryRecord })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [previewFile, setPreviewFile] = useState<(MediaFile & { record: HistoryRecord }) | null>(null);
@@ -484,35 +734,36 @@ function MediaGrid() {
     const loadMediaFiles = async () => {
       setIsLoading(true);
       try {
-        const allMediaFiles: (MediaFile & { record: HistoryRecord })[] = [];
+        // 🚀 如果media记录数量少于20，直接加载所有媒体记录（突破分页限制）
+        let allMediaRecords = mediaRecords;
         
-        for (const record of mediaRecords) {
+        if (mediaRecords.length < 50) { // 如果当前记录数少于50，尝试加载更多
           try {
-            // 使用新的getFilesByHistoryId方法查询媒体文件
-            const files = await storageService.getFilesByHistoryId(record.id);
-            
-            for (const file of files) {
-              // 🔧 使用增强的媒体缓存管理器
-              try {
-                // 检查 mediaCache 是否可用（服务器端兼容性）
-                if (mediaCache) {
-                  const blob = await mediaCache.getMediaBlob(file.url, 'normal');
-                  if (blob) {
-                    file.blob = blob;
-                  } else {
-                    console.warn(`获取文件 ${file.fileName} 的blob数据失败`);
-                  }
-                } else {
-                  console.warn('MediaCache 不可用，跳过预加载');
-                }
-              } catch (blobError) {
-                console.warn(`获取文件 ${file.fileName} 的blob数据失败:`, blobError);
-              }
-              
-              allMediaFiles.push({ ...file, record });
-            }
+            // 直接调用存储服务获取所有媒体记录
+            const allMediaResponse = await storageService.listRecords({
+              type: 'media',
+              limit: 1000, // 获取更多记录
+              page: 1,
+              sortBy: 'createdAt',
+              sortOrder: 'desc'
+            });
+            allMediaRecords = allMediaResponse.items;
+            console.log('🔄 获取所有媒体记录:', allMediaRecords.length);
           } catch (error) {
-            console.error(`加载记录 ${record.id} 的媒体文件失败:`, error);
+            console.warn('无法获取所有媒体记录，使用当前记录:', error);
+          }
+        }
+        
+        // 🚀 阶段1：快速显示基础布局（批量查询优化）
+        const mediaRecordIds = allMediaRecords.map(record => record.id);
+        const filesMap = await storageService.getFilesByHistoryIds(mediaRecordIds);
+        
+        // 构建基础媒体文件数组（不包含blob数据）
+        const allMediaFiles: (MediaFile & { record: HistoryRecord })[] = [];
+        for (const record of allMediaRecords) {
+          const files = filesMap.get(record.id) || [];
+          for (const file of files) {
+            allMediaFiles.push({ ...file, record });
           }
         }
         
@@ -520,25 +771,91 @@ function MediaGrid() {
           new Date(b.record.createdAt).getTime() - new Date(a.record.createdAt).getTime()
         );
         
-        console.log('媒体文件加载完成:', allMediaFiles.length, '个文件');
+        console.log('✅ 阶段1：基础布局加载完成:', allMediaFiles.length, '个文件');
         setMediaFiles(allMediaFiles);
+        setIsLoading(false);
         
-        // 🔧 显示缓存统计信息
+        // 🔄 阶段2：分批加载所有缩略图（支持图片和视频）
+        if (mediaCache) {
+          const batchSize = 12; // 每批加载12个
+          const batches = [];
+          
+          // 分批处理所有媒体文件
+          for (let i = 0; i < allMediaFiles.length; i += batchSize) {
+            batches.push(allMediaFiles.slice(i, i + batchSize));
+          }
+          
+          console.log(`🔄 阶段2：开始分批加载 ${allMediaFiles.length} 个缩略图，共 ${batches.length} 批`);
+          
+          // 逐批加载缩略图
+          for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+            const batch = batches[batchIndex];
+            const batchPromises = batch.map(async (file, index) => {
+              // 只为图片和视频生成缩略图
+              if (!file.mimeType?.startsWith('image/') && !file.mimeType?.startsWith('video/')) {
+                return file;
+              }
+              
+              try {
+                const thumbnailBlob = await mediaCache!.getThumbnailBlob(file.url, 200);
+                if (thumbnailBlob) {
+                  file.thumbnailBlob = thumbnailBlob;
+                  console.log(`✅ 缩略图加载成功 (批${batchIndex + 1}/${batches.length}, 第${index + 1}/${batch.length}): ${file.fileName}`);
+                }
+              } catch (error) {
+                console.warn(`缩略图加载失败: ${file.fileName}`, error);
+              }
+              
+              return file;
+            });
+            
+            // 等待当前批次完成
+            const batchWithThumbnails = await Promise.all(batchPromises);
+            
+            // 立即更新状态，让用户看到加载进度
+            setMediaFiles(prev => {
+              const updated = [...prev];
+              batchWithThumbnails.forEach((fileWithThumbnail) => {
+                if (fileWithThumbnail.thumbnailBlob) {
+                  const fileIndex = updated.findIndex(f => f.id === fileWithThumbnail.id);
+                  if (fileIndex !== -1) {
+                    updated[fileIndex] = fileWithThumbnail;
+                  }
+                }
+              });
+              return updated;
+            });
+            
+            // 短暂延迟，避免阻塞UI
+            if (batchIndex < batches.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          }
+          
+          console.log('✅ 阶段2：所有缩略图加载完成');
+        }
+        
+        // 🔧 显示增强的缓存统计信息
         if (mediaCache) {
           const cacheStats = mediaCache.getCacheStats();
-          console.log(`📊 缓存状态: ${cacheStats.memoryEntries}个文件, ${cacheStats.memorySize}, 命中率${cacheStats.hitRate.toFixed(1)}%`);
+          console.log(`📊 缓存详情: ${cacheStats.memoryEntries}个文件, ${cacheStats.memorySize}, 配置${cacheStats.configInfo}`);
+          console.log(`📈 缓存指标: 内存使用${(cacheStats.memoryUsage * 100).toFixed(1)}%, 缩略图${cacheStats.thumbnailCacheSize}个, 内存压力${(cacheStats.memoryPressure * 100).toFixed(1)}%`);
+          console.log(`🎯 访问统计: 平均访问${cacheStats.averageAccessCount.toFixed(1)}次, 最新文件${cacheStats.newestEntry}`);
         }
         
-        // 🚀 预加载最新的3个文件（提升用户体验）
-        const recentFiles = allMediaFiles.slice(0, 3);
-        if (recentFiles.length > 0 && mediaCache) {
-          setTimeout(() => {
-            mediaCache!.preloadMedia(recentFiles, 'normal');
-          }, 1000); // 延迟1秒预加载，避免阻塞主要内容
-        }
+        // 🚀 阶段3：智能预热缓存（基于使用模式）
+        setTimeout(async () => {
+          if (mediaCache) {
+            const recentFiles = allMediaFiles.slice(0, 12); // 最近12个文件
+            const frequentFiles = allMediaFiles.slice(12, 24); // 次新的12个文件
+            
+            console.log(`🚀 阶段3：启动智能预热机制`);
+            await mediaCache.warmUpCache(recentFiles, frequentFiles);
+          }
+        }, 2000); // 延迟2秒，确保用户界面响应优先
+        
       } catch (error) {
-        console.error('加载媒体文件失败:', error);
-      } finally {
+        console.error('❌ 分层加载失败:', error);
         setIsLoading(false);
       }
     };
@@ -564,10 +881,34 @@ function MediaGrid() {
     }
   };
 
-  // 预览图片
-  const handlePreview = (file: MediaFile & { record: HistoryRecord }) => {
+  // 预览图片 - 支持按需加载完整图片
+  const handlePreview = async (file: MediaFile & { record: HistoryRecord }) => {
     setPreviewFile(file);
     setIsPreviewOpen(true);
+    
+    // 🚀 按需加载完整图片：如果当前只有缩略图，异步加载完整图片
+    if (file.thumbnailBlob && !file.blob && mediaCache) {
+      console.log(`🔄 按需加载完整图片: ${file.fileName}`);
+      
+      try {
+        const fullBlob = await mediaCache.getMediaBlob(file.url, 'high');
+        if (fullBlob) {
+          // 更新文件的blob数据
+          file.blob = fullBlob;
+          
+          // 更新状态以触发重新渲染
+          setMediaFiles(prev => prev.map(f => 
+            f.id === file.id ? { ...f, blob: fullBlob } : f
+          ));
+          
+          // 更新预览文件
+          setPreviewFile({ ...file, blob: fullBlob });
+          console.log(`✅ 完整图片加载成功: ${file.fileName}`);
+        }
+      } catch (error) {
+        console.warn(`完整图片加载失败: ${file.fileName}`, error);
+      }
+    }
   };
 
   // 关闭预览
@@ -644,6 +985,32 @@ function MediaGrid() {
     );
   }
 
+  // 显示基本加载状态
+  if (isLoading && mediaFiles.length > 0) {
+    return (
+      <div className="space-y-4">
+        {/* 已经有基础布局，显示缩略图加载进度 */}
+        <div className="flex items-center justify-center py-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+            <span>正在加载缩略图...</span>
+          </div>
+        </div>
+        
+        {/* 使用简化的网格显示所有媒体文件 */}
+        <VirtualizedMediaGrid
+          mediaFiles={mediaFiles}
+          onPreview={handlePreview}
+          onDelete={handleDeleteMedia}
+          previewFile={previewFile}
+          isPreviewOpen={isPreviewOpen}
+          onClosePreview={handleClosePreview}
+          thumbnailsLoading={false}
+        />
+      </div>
+    );
+  }
+
   if (mediaFiles.length === 0) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -658,159 +1025,19 @@ function MediaGrid() {
     );
   }
 
-  return (
-    <>
-      <div className="grid grid-cols-3 gap-2">
-        {mediaFiles.map((file) => (
-          <motion.div
-            key={file.id}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative group aspect-square bg-muted rounded-lg overflow-hidden"
-          >
-            {/* 媒体内容 - 智能显示图片和视频缩略图 */}
-            {file.mimeType?.startsWith('image/') && file.blob ? (
-            <img
-              src={URL.createObjectURL(file.blob)}
-              alt={file.record.title}
-              className="w-full h-full object-cover cursor-grab active:cursor-grabbing group-hover:scale-105 transition-transform duration-200"
-              draggable={true}
-              onClick={(e) => {
-                // 只有在没有拖拽的情况下才触发预览
-                if (!e.defaultPrevented) {
-                  handlePreview(file);
-                }
-              }}
-              onDragStart={(e) => {
-                // 设置拖拽数据 - 直接使用现有的URL
-                const imageUrl = e.currentTarget.src;
-                const dragId = `history-${Date.now()}`;
-                
-                // 将文件数据存储到缓存中
-                dragFileCache.set(dragId, file);
-                
-                e.dataTransfer.setData('text/plain', imageUrl);
-                e.dataTransfer.setData('application/json', JSON.stringify({
-                  type: 'history-image',
-                  imageUrl: imageUrl,
-                  fileName: file.fileName,
-                  recordTitle: file.record.title,
-                  dragId: dragId
-                }));
-                
-                // 设置拖拽效果
-                e.dataTransfer.effectAllowed = 'copy';
-                console.log('开始拖拽历史记录图片:', file.fileName);
-              }}
-              onDragEnd={(e) => {
-                // 清理缓存
-                setTimeout(() => {
-                  dragFileCache.clear();
-                }, 1000); // 延迟清理，确保drop事件能够访问到数据
-                console.log('拖拽结束');
-              }}
-              title="点击预览，拖拽到输入框使用此图片"
-            />
-            ) : file.mimeType?.startsWith('video/') ? (
-              // 对于视频，优先显示缩略图，如果没有缩略图则显示视频第一帧
-              <div className="relative w-full h-full bg-black/10">
-                {file.thumbnailBlob ? (
-                  // 显示缩略图
-                  <img
-                    src={URL.createObjectURL(file.thumbnailBlob)}
-                    alt={file.record.title}
-                    className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-200"
-                    onClick={(e) => {
-                      // 点击预览完整视频
-                      if (!e.defaultPrevented) {
-                        handlePreview(file);
-                      }
-                    }}
-                    title="点击预览完整视频"
-                  />
-                ) : (
-                  // 降级方案：显示视频第一帧
-                  file.blob && <video
-                    src={URL.createObjectURL(file.blob)}
-                    className="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition-transform duration-200"
-                    preload="metadata"
-                    onClick={(e) => {
-                      // 点击预览视频
-                      if (!e.defaultPrevented) {
-                        handlePreview(file);
-                      }
-                    }}
-                    title="点击预览视频"
-                  />
-                )}
-                {/* 视频播放图标覆盖层 */}
-                <div 
-                  className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors cursor-pointer"
-                  onClick={(e) => {
-                    // 点击播放图标也触发预览
-                    if (!e.defaultPrevented) {
-                      handlePreview(file);
-                    }
-                  }}
-                  title="点击预览完整视频"
-                >
-                  <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
-                    <Video className="w-6 h-6 text-black ml-1" />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              // 其他文件类型的占位符
-              <div className="w-full h-full bg-muted flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-8 h-8 bg-muted-foreground/20 rounded mx-auto mb-2"></div>
-                  <p className="text-xs text-muted-foreground">
-                    {file.fileName.split('.').pop()?.toUpperCase()}
-                  </p>
-                </div>
-              </div>
-            )}
-            
-            {/* 底部信息 */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 pr-10">
-              <p className="text-white text-xs truncate">
-                {file.record.title}
-              </p>
-              <p className="text-white/70 text-xs">
-                {new Date(file.record.createdAt).toLocaleDateString()}
-              </p>
-            </div>
-            
-            {/* 删除按钮 - 右下角，确保在信息区域之上 */}
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                handleDeleteMedia(file);
-              }}
-              className="absolute bottom-2 right-2 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
-              title="删除图片"
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* 图片预览模态框 */}
-      <ImagePreviewModal
-        file={previewFile}
-        isOpen={isPreviewOpen}
-        onClose={handleClosePreview}
-      />
-      
-      {/* 确认对话框 */}
-      <ConfirmDialogComponent />
-    </>
-  );
-}
+        // 🚀 使用优化的网格显示媒体文件
+      return (
+        <VirtualizedMediaGrid
+          mediaFiles={mediaFiles}
+          onPreview={handlePreview}
+          onDelete={handleDeleteMedia}
+          previewFile={previewFile}
+          isPreviewOpen={isPreviewOpen}
+          onClosePreview={handleClosePreview}
+          thumbnailsLoading={false}
+        />
+      );
+});
 
 // 历史记录库主组件
 export function HistoryLibrary() {

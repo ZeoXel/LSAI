@@ -98,6 +98,7 @@ export interface StorageService {
   getFile(id: string): Promise<MediaFile | null>;
   deleteFile(id: string): Promise<void>;
   getFilesByHistoryId(historyId: string): Promise<MediaFile[]>;
+  getFilesByHistoryIds(historyIds: string[]): Promise<Map<string, MediaFile[]>>;
   
   // 标签管理
   createTag(tag: Omit<Tag, 'id' | 'createdAt'>): Promise<Tag>;

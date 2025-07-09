@@ -362,6 +362,39 @@ export class SupabaseStorageService implements StorageService {
     return (data || []).map(mapDbToTs);
   }
 
+  // 🚀 批量查询多个历史记录的媒体文件（性能优化）
+  async getFilesByHistoryIds(historyIds: string[]): Promise<Map<string, MediaFile[]>> {
+    if (historyIds.length === 0) {
+      return new Map();
+    }
+    
+    console.log(`🔍 批量查询 ${historyIds.length} 个历史记录的媒体文件`);
+    
+    const { data, error } = await supabase
+      .from('media_files')
+      .select('*')
+      .in('history_id', historyIds)
+      .order('created_at', { ascending: false });
+      
+    if (error) {
+      console.error('❌ 批量查询媒体文件失败:', error);
+      throw error;
+    }
+    
+    // 按 history_id 分组
+    const grouped = new Map<string, MediaFile[]>();
+    (data || []).forEach(file => {
+      const historyId = file.history_id;
+      if (!grouped.has(historyId)) {
+        grouped.set(historyId, []);
+      }
+      grouped.get(historyId)!.push(mapDbToTs(file));
+    });
+    
+    console.log(`✅ 批量查询完成，获得 ${data?.length || 0} 个媒体文件`);
+    return grouped;
+  }
+
   // 标签管理
   async createTag(tag: Omit<Tag, 'id' | 'createdAt'>): Promise<Tag> {
     const dbTag = {

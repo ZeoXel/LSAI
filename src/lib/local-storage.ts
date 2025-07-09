@@ -206,6 +206,35 @@ export class LocalStorageService implements StorageService {
     return db.mediaFiles.where('historyId').equals(historyId).toArray();
   }
 
+  // 🚀 批量查询多个历史记录的媒体文件（性能优化）
+  async getFilesByHistoryIds(historyIds: string[]): Promise<Map<string, MediaFile[]>> {
+    if (historyIds.length === 0) {
+      return new Map();
+    }
+    
+    console.log(`🔍 批量查询 ${historyIds.length} 个历史记录的媒体文件`);
+    
+    const files = await db.mediaFiles.where('historyId').anyOf(historyIds).toArray();
+    
+    // 按 historyId 分组
+    const grouped = new Map<string, MediaFile[]>();
+    files.forEach(file => {
+      const historyId = file.historyId;
+      if (!grouped.has(historyId)) {
+        grouped.set(historyId, []);
+      }
+      grouped.get(historyId)!.push(file);
+    });
+    
+    // 对每个组内的文件按创建时间排序
+    for (const [historyId, fileList] of grouped) {
+      fileList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    
+    console.log(`✅ 批量查询完成，获得 ${files.length} 个媒体文件`);
+    return grouped;
+  }
+
   // 标签管理
   async createTag(tag: Omit<Tag, 'id' | 'createdAt'>): Promise<Tag> {
     const newTag: Tag = {
